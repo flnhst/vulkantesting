@@ -13,6 +13,8 @@ struct physical_device_info
 
     std::vector<uint32_t> graphics_family_queue_indices_;
     std::vector<uint32_t> transfer_family_queue_indices_;
+
+    std::vector<uint32_t> present_family_queue_indices_;
 };
 
 class engine
@@ -38,13 +40,13 @@ private:
     void create_instance_();
     void create_debug_utils_ext_();
     void enumerate_physical_devices_();
+    void create_surface_();
     void select_physical_device_();
     void create_device_();
     void retrieve_queues_();
-    void create_surface_();
 
-    void destroy_surface_();
     void destroy_device_();
+    void destroy_surface_();
     void destroy_debug_utils_ext_();
     void destroy_instance_();
     void destroy_sdl_window_();
@@ -76,7 +78,11 @@ private:
     const physical_device_info* selected_physical_device_info_{ nullptr };
 
     vk::Device device_{ nullptr };
+
+    std::uint32_t graphics_queue_family_index_{ 0 };
     vk::Queue graphics_queue_{ nullptr };
+    std::uint32_t present_queue_family_index_{ 0 };
+    vk::Queue present_queue_{ nullptr };
 
     vk::SurfaceKHR surface_{ nullptr };
 
