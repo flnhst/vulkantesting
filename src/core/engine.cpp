@@ -281,13 +281,45 @@ void engine::create_surface_()
 
     const auto wm_info = sdl_window_->get_system_wm_info();
 
+    vk::Result result;
+
 #ifdef WIN32
+    SPDLOG_INFO("Using Win32 surface.");
+
     vk::Win32SurfaceCreateInfoKHR create_info{};
 
     create_info.hwnd = wm_info.info.win.window;
     create_info.hinstance = GetModuleHandle(nullptr);
 
-    auto result = instance_.createWin32SurfaceKHR(&create_info, nullptr, &surface_, dispatch_);
+    result = instance_.createWin32SurfaceKHR(&create_info, nullptr, &surface_, dispatch_);
+#else
+    auto display = get_environment_variable("DISPLAY");
+    auto sdl_videodriver = get_environment_variable("SDL_VIDEODRIVER");
+
+    if (!display || display.value().empty() || sdl_videodriver == "wayland")
+    {
+        SPDLOG_INFO("Using Wayland surface.");
+
+        vk::WaylandSurfaceCreateInfoKHR create_info{};
+
+        create_info
+            .setDisplay(wm_info.info.wl.display)
+            .setSurface(wm_info.info.wl.surface);
+
+        result = instance_.createWaylandSurfaceKHR(&create_info, nullptr, &surface_, dispatch_);
+    }
+    else
+    {
+        SPDLOG_INFO("Using X11 surface.");
+
+        vk::XlibSurfaceCreateInfoKHR create_info{};
+
+        create_info
+            .setDpy(wm_info.info.x11.display)
+            .setWindow(wm_info.info.x11.window);
+
+        result = instance_.createXlibSurfaceKHR(&create_info, nullptr, &surface_, dispatch_);
+    }
 #endif
 
     EVK_ASSERT_RESULT(result, "Failed to create surface.");
@@ -297,9 +329,11 @@ void engine::create_surface_()
 
 void engine::destroy_surface_()
 {
-    SPDLOG_INFO("Destroying surface.");
+    SPDLOG_TRACE("Destroying surface.");
 
-    SPDLOG_INFO("Destroyed surface.");
+    instance_.destroySurfaceKHR(surface_, nullptr, dispatch_);
+
+    SPDLOG_TRACE("Destroyed surface.");
 }
 
 void engine::destroy_device_()
