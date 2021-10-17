@@ -9,7 +9,13 @@ sdl_window::sdl_window(engine& p_engine)
 
     sdl_context_->on_quit(std::bind(&sdl_window::on_quit_, this));
 
-    sdl_window_ = &sdl_context_->create_window("Vulkan Testing", 1000, 200, width_, height_,SDL_WINDOW_ALLOW_HIGHDPI);
+    std::uint32_t x{ 200 };
+
+#ifdef WIN32
+    x = 1000;
+#endif
+
+    sdl_window_ = &sdl_context_->create_window("Vulkan Testing", x, 200, width_, height_,SDL_WINDOW_ALLOW_HIGHDPI);
 }
 
 sdl_window::~sdl_window()
