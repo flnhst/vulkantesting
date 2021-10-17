@@ -228,6 +228,8 @@ void engine::enumerate_physical_devices_()
 
     const auto physical_devices = instance_.enumeratePhysicalDevices(dispatch_);
 
+    bool get_surface_support_failed{ false };
+
     for (auto physical_device : physical_devices)
     {
         physical_device_info& new_info = physical_device_infos_.emplace_back();
@@ -244,6 +246,8 @@ void engine::enumerate_physical_devices_()
 
         for (auto queue_family : new_info.queue_families)
         {
+            SPDLOG_INFO("Testing queue family index {}.", queue_family_index);
+
             if (queue_family.queueFamilyProperties.queueFlags & vk::QueueFlagBits::eGraphics)
             {
                 new_info.graphics_family_queue_indices_.emplace_back(queue_family_index);
@@ -262,11 +266,15 @@ void engine::enumerate_physical_devices_()
 
             vk::Bool32 present_support{ false };
 
-            auto result = physical_device.getSurfaceSupportKHR(queue_family_index, surface_, &present_support, dispatch_);
+            const auto result = physical_device.getSurfaceSupportKHR(queue_family_index, surface_, &present_support, dispatch_);
 
-            EVK_ASSERT_RESULT(result, "Failed to query surface support.");
+            if (result != vk::Result::eSuccess)
+            {
+                SPDLOG_ERROR("Querying surface support has failed: '{}'.", vk::to_string(result));
 
-            if (present_support)
+                get_surface_support_failed = true;
+            }
+            else if (present_support)
             {
                 SPDLOG_INFO("Surface is supported by queue family index {}.", queue_family_index);
 
@@ -278,6 +286,11 @@ void engine::enumerate_physical_devices_()
     }
 
     SPDLOG_INFO("Enumerated physical devices.");
+
+    if (get_surface_support_failed)
+    {
+        throw std::runtime_error("Querying surface support has failed.");
+    }
 }
 
 void engine::select_physical_device_()
