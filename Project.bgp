@@ -1,0 +1,105 @@
+Project.Name = "vulkantesting";
+
+// External dependencies
+
+var externalDependencies = new {
+    glm = new GLMExternalDependency()
+    {
+        Version = MakeVersion(0, 9, 8)
+    },
+    sdl2 = new SDL2ExternalDependency()
+    {
+        Version = MakeVersion(2, 0, 12)
+    },
+    sdlPlusPlus = new SDLPlusPlusExternalDependency()
+    {
+        Version = MakeVersion("master")
+    },
+    vulkan = new VulkanExternalDependency()
+    {
+        HeadersVersion = MakeVersion(1, 2, 176),
+        LoaderVersion = MakeVersion(1, 2, 176)
+    },
+    threads = new ThreadsExternalDependency()
+};
+
+Project.AddExternalDependencies(externalDependencies);
+
+var ed = externalDependencies;
+
+// Libraries
+
+var core = Project.CreateLibrary(
+    name: "core",
+    sourcePath: "src/core",
+    ignoreSubdirs: true,
+    extensions: new [] { ".cpp", ".h" }
+);
+
+var log = Project.CreateLibrary(
+    name: "log",
+    sourcePath: "src/log",
+    ignoreSubdirs: false,
+    extensions: new [] { ".cpp", ".h" },
+    dependencies: new [] {
+        ed.threads.Threads
+    }
+);
+
+// Executables
+
+var vulkantestingExecutable = Project.CreateExecutable(
+    name: "vulkantesting", 
+    sourcePath: "src/main",
+    extensions: new [] { ".cpp", ".h" }
+);
+
+// Definitions
+
+Project.AddDefinitionToTargets("SDL_MAIN_HANDLED");
+Project.AddDefinitionToTargets("_SCL_SECURE_NO_WARNINGS");
+Project.AddDefinitionToTargets("NOMINMAX");
+Project.AddDefinitionToTargets("_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS");
+Project.AddDefinitionToTargets("_HAS_AUTO_PTR_ETC", "1");
+Project.AddDefinitionToTargets("CMAKE_BUILD_TYPE", "\"$<CONFIG>\"");
+Project.AddDefinitionToTargets("CMAKE_BUILD_TYPE_DEBUG", "$<CONFIG:Debug>");
+Project.AddDefinitionToTargets("CMAKE_BUILD_TYPE_RELEASE", "$<CONFIG:Release>");
+Project.AddDefinitionToTargets("CMAKE_BUILD_TYPE_RELWITHDEBINFO", "$<CONFIG:RelWithDebInfo>");
+Project.AddDefinitionToTargets("CMAKE_BUILD_TYPE_MINSIZEREL", "$<CONFIG:MinSizeRel>");
+Project.AddDefinitionToTargets("WINVER", "_WIN32_WINNT_WIN10");
+Project.AddDefinitionToTargets("_WIN32_WINNT", "_WIN32_WINNT_WIN10");
+
+// Includes
+
+Project.AddIncludeDirectoryToTargets("src");
+Project.AddIncludeDirectoryToTargets("src/log");
+
+vulkantestingExecutable.AllowCopyCommands = true;
+vulkantestingExecutable.WindowsSubsystem = WindowsSubsystem.Windows;
+vulkantestingExecutable.UseLLDOnLinux = true;
+
+// Dependencies
+
+vulkantestingExecutable.AddDependencies(
+    core);
+
+var sharedDependencies = new Target[] {
+    log,
+    ed.glm.GLM,
+    ed.sdl2.SDL2,
+    ed.sdlPlusPlus.SDLPlusPlus,
+    ed.vulkan.Vulkan,
+    ed.threads.Threads
+};
+
+foreach (var dependency in vulkantestingExecutable.Dependencies)
+{
+    if (dependency.Name == "log" || dependency.Name == "reflective")
+    {
+        continue;
+    }
+
+    dependency.AddDependencies(sharedDependencies);
+}
+
+vulkantestingExecutable.AddDependencies(sharedDependencies);
