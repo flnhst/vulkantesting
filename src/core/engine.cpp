@@ -46,11 +46,15 @@ void engine::initialize()
     create_sdl_window_();
     create_instance_();
     create_debug_utils_ext_();
+    enumerate_physical_devices_();
     select_physical_device_();
+    create_device_();
+    retrieve_queues_();
 }
 
 void engine::destroy()
 {
+    destroy_device_();
     destroy_debug_utils_ext_();
     destroy_instance_();
     destroy_sdl_window_();
@@ -149,7 +153,7 @@ void engine::create_debug_utils_ext_()
             vk::DebugUtilsMessageSeverityFlagBitsEXT::eError |
             vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning)
         .setMessageType(
-            vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+            //vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
             vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance |
             vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
 
@@ -162,23 +166,120 @@ void engine::create_debug_utils_ext_()
     SPDLOG_INFO("Created debug utils messenger callback.");
 }
 
-void engine::select_physical_device_()
+void engine::enumerate_physical_devices_()
 {
-    auto physical_devices = instance_.enumeratePhysicalDevices(dispatch_);
+    SPDLOG_INFO("Enumerating physical devices...");
+
+    const auto physical_devices = instance_.enumeratePhysicalDevices(dispatch_);
 
     for (auto physical_device : physical_devices)
     {
-        const auto properties = physical_device.getProperties2();
+        physical_device_info& new_info = physical_device_infos_.emplace_back();
 
-        SPDLOG_INFO("Found physical device: '{}'.", properties.properties.deviceName);
+        new_info.physical_device = physical_device;
 
-        if (is_physical_device_suitable_(physical_device))
+        new_info.properties = physical_device.getProperties2(dispatch_);
+        new_info.features = physical_device.getFeatures2(dispatch_);
+        new_info.queue_families = physical_device.getQueueFamilyProperties2(dispatch_);
+
+        SPDLOG_INFO("Found physical device: '{}'.", new_info.properties.properties.deviceName);
+
+        std::uint32_t queue_family_index{ 0 };
+
+        for (auto queue_family : new_info.queue_families)
         {
-            physical_device_ = physical_device;
+            if (queue_family.queueFamilyProperties.queueFlags & vk::QueueFlagBits::eGraphics)
+            {
+                new_info.graphics_family_queue_indices_.emplace_back(queue_family_index);
 
-            SPDLOG_INFO("\tFound suitable device.");
+                SPDLOG_INFO("\tFound graphics family queue at index {}.", queue_family_index);
+            }
+
+            if (queue_family.queueFamilyProperties.queueFlags & vk::QueueFlagBits::eTransfer)
+            {
+                new_info.transfer_family_queue_indices_.emplace_back(queue_family_index);
+
+                SPDLOG_INFO("\tFound transfer family queue at index {}.", queue_family_index);
+            }
+
+            queue_family_index++;
         }
     }
+
+    SPDLOG_INFO("Enumerated physical devices.");
+}
+
+void engine::select_physical_device_()
+{
+    for (const auto& physical_device_info : physical_device_infos_)
+    {
+        if (is_physical_device_suitable_(physical_device_info))
+        {
+            selected_physical_device_info_ = &physical_device_info;
+
+            SPDLOG_INFO("Selected device '{}'.", selected_physical_device_info_->properties.properties.deviceName);
+
+            return;
+        }
+    }
+
+    if (selected_physical_device_info_ == nullptr)
+    {
+        throw std::runtime_error("Failed to select physical device.");
+    }
+}
+
+void engine::create_device_()
+{
+    SPDLOG_INFO("Creating device...");
+
+    const auto physical_device = selected_physical_device_info_->physical_device;
+
+    vk::PhysicalDeviceFeatures features{};
+
+    vk::DeviceQueueCreateInfo queue_create_info{};
+
+    float queue_priority{ 1.0f };
+
+    queue_create_info
+        .setQueueFamilyIndex(selected_physical_device_info_->graphics_family_queue_indices_[0])
+        .setQueueCount(1)
+        .setPQueuePriorities(&queue_priority);
+
+    vk::DeviceCreateInfo create_info{};
+
+    create_info
+        .setQueueCreateInfoCount(1)
+        .setPQueueCreateInfos(&queue_create_info)
+        .setPEnabledFeatures(&features)
+        .setEnabledExtensionCount(device_extensions_.size())
+        .setPpEnabledExtensionNames(device_extensions_.data())
+        .setEnabledLayerCount(layers_.size())
+        .setPpEnabledLayerNames(layers_.data());
+
+    const auto result = physical_device.createDevice(&create_info, nullptr, &device_, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to create device.");
+
+    SPDLOG_INFO("Creating device.");
+}
+
+void engine::retrieve_queues_()
+{
+    SPDLOG_INFO("Retrieving queues...");
+
+    device_.getQueue(selected_physical_device_info_->graphics_family_queue_indices_[0], 0, &graphics_queue_, dispatch_);
+
+    SPDLOG_INFO("Retrieved queues.");
+}
+
+void engine::destroy_device_()
+{
+    SPDLOG_TRACE("Destroying device...");
+
+    device_.destroy(nullptr, dispatch_);
+
+    SPDLOG_TRACE("Destroyed device.");
 }
 
 void engine::destroy_debug_utils_ext_()
@@ -206,36 +307,11 @@ void engine::destroy_sdl_window_()
     SPDLOG_TRACE("Destroyed SDL window.");
 }
 
-bool engine::is_physical_device_suitable_(vk::PhysicalDevice physical_device)
+bool engine::is_physical_device_suitable_(const physical_device_info& p_physical_device_info)
 {
-    const auto properties = physical_device.getProperties2(dispatch_);
-    const auto queue_family_properties = physical_device.getQueueFamilyProperties2();
-
-    std::optional<std::uint32_t> graphics_queue_family_index;
-    std::optional<std::uint32_t> transfer_queue_family_index;
-
-    std::uint32_t queue_family_index{ 0 };
-
-    for (auto queue_family : queue_family_properties)
-    {
-        if (queue_family.queueFamilyProperties.queueFlags& vk::QueueFlagBits::eGraphics)
-        {
-            graphics_queue_family_index = queue_family_index;
-
-            SPDLOG_INFO("\tFound graphics family queue at index {}.", queue_family_index);
-        }
-
-        if (queue_family.queueFamilyProperties.queueFlags & vk::QueueFlagBits::eTransfer)
-        {
-            transfer_queue_family_index = queue_family_index;
-
-            SPDLOG_INFO("\tFound transfer family queue at index {}.", queue_family_index);
-        }
-
-        queue_family_index++;
-    }
-
-    return properties.properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu && graphics_queue_family_index && transfer_queue_family_index;
+    return p_physical_device_info.properties.properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu
+        && !p_physical_device_info.graphics_family_queue_indices_.empty()
+        && !p_physical_device_info.transfer_family_queue_indices_.empty();
 }
 
 VkBool32 messenger_callback(

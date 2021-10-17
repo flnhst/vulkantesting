@@ -3,6 +3,18 @@
 
 #include "core/core.h"
 
+struct physical_device_info
+{
+    vk::PhysicalDevice physical_device;
+
+    vk::PhysicalDeviceProperties2 properties;
+    vk::PhysicalDeviceFeatures2 features;
+    std::vector<vk::QueueFamilyProperties2> queue_families;
+
+    std::vector<uint32_t> graphics_family_queue_indices_;
+    std::vector<uint32_t> transfer_family_queue_indices_;
+};
+
 class engine
 {
 public:
@@ -25,13 +37,17 @@ private:
     void create_sdl_window_();
     void create_instance_();
     void create_debug_utils_ext_();
+    void enumerate_physical_devices_();
     void select_physical_device_();
+    void create_device_();
+    void retrieve_queues_();
 
+    void destroy_device_();
     void destroy_debug_utils_ext_();
     void destroy_instance_();
     void destroy_sdl_window_();
 
-    bool is_physical_device_suitable_(vk::PhysicalDevice physical_device);
+    bool is_physical_device_suitable_(const physical_device_info& p_physical_device_info);
 
     std::unique_ptr<sdl_window> sdl_window_;
 
@@ -53,8 +69,12 @@ private:
     std::uint64_t messages_emitted_{ 0 };
     vk::DebugUtilsMessengerEXT debug_utils_messenger_{ nullptr };
 
-    vk::PhysicalDevice physical_device_{ nullptr };
-    std::uint32_t queue_family_index_{ 0 };
+    std::vector<physical_device_info> physical_device_infos_;
+
+    const physical_device_info* selected_physical_device_info_{ nullptr };
+
+    vk::Device device_{ nullptr };
+    vk::Queue graphics_queue_{ nullptr };
 
     friend VkBool32 messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
