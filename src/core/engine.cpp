@@ -248,15 +248,17 @@ void engine::enumerate_physical_devices_()
             {
                 new_info.graphics_family_queue_indices_.emplace_back(queue_family_index);
 
-                SPDLOG_INFO("\tFound graphics family queue at index {}.", queue_family_index);
+                SPDLOG_INFO("Found graphics family queue at index {}.", queue_family_index);
             }
 
             if (queue_family.queueFamilyProperties.queueFlags & vk::QueueFlagBits::eTransfer)
             {
                 new_info.transfer_family_queue_indices_.emplace_back(queue_family_index);
 
-                SPDLOG_INFO("\tFound transfer family queue at index {}.", queue_family_index);
+                SPDLOG_INFO("Found transfer family queue at index {}.", queue_family_index);
             }
+
+            SPDLOG_INFO("Querying surface support...");
 
             vk::Bool32 present_support{ false };
 
@@ -266,6 +268,8 @@ void engine::enumerate_physical_devices_()
 
             if (present_support)
             {
+                SPDLOG_INFO("Surface is supported by queue family index {}.", queue_family_index);
+
                 new_info.present_family_queue_indices_.emplace_back(queue_family_index);
             }
 
