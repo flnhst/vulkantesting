@@ -41,7 +41,9 @@ private:
     void select_physical_device_();
     void create_device_();
     void retrieve_queues_();
+    void create_surface_();
 
+    void destroy_surface_();
     void destroy_device_();
     void destroy_debug_utils_ext_();
     void destroy_instance_();
@@ -75,6 +77,8 @@ private:
 
     vk::Device device_{ nullptr };
     vk::Queue graphics_queue_{ nullptr };
+
+    vk::SurfaceKHR surface_{ nullptr };
 
     friend VkBool32 messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,

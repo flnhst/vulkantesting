@@ -15,6 +15,8 @@ public:
 
     void process_events();
 
+    SDL_SysWMinfo get_system_wm_info();
+
 private:
     void on_quit_();
 

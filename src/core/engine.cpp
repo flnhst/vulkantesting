@@ -50,10 +50,12 @@ void engine::initialize()
     select_physical_device_();
     create_device_();
     retrieve_queues_();
+    create_surface_();
 }
 
 void engine::destroy()
 {
+    destroy_surface_();
     destroy_device_();
     destroy_debug_utils_ext_();
     destroy_instance_();
@@ -271,6 +273,33 @@ void engine::retrieve_queues_()
     device_.getQueue(selected_physical_device_info_->graphics_family_queue_indices_[0], 0, &graphics_queue_, dispatch_);
 
     SPDLOG_INFO("Retrieved queues.");
+}
+
+void engine::create_surface_()
+{
+    SPDLOG_INFO("Creating surface...");
+
+    const auto wm_info = sdl_window_->get_system_wm_info();
+
+#ifdef WIN32
+    vk::Win32SurfaceCreateInfoKHR create_info{};
+
+    create_info.hwnd = wm_info.info.win.window;
+    create_info.hinstance = GetModuleHandle(nullptr);
+
+    auto result = instance_.createWin32SurfaceKHR(&create_info, nullptr, &surface_, dispatch_);
+#endif
+
+    EVK_ASSERT_RESULT(result, "Failed to create surface.");
+
+    SPDLOG_INFO("Created surface.");
+}
+
+void engine::destroy_surface_()
+{
+    SPDLOG_INFO("Destroying surface.");
+
+    SPDLOG_INFO("Destroyed surface.");
 }
 
 void engine::destroy_device_()

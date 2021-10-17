@@ -24,6 +24,11 @@ void sdl_window::process_events()
     sdl_context_->process_event_queue();
 }
 
+SDL_SysWMinfo sdl_window::get_system_wm_info()
+{
+    return sdl_window_->get_system_wm_info();
+}
+
 void sdl_window::on_quit_()
 {
     SPDLOG_INFO("SDL is quitting.");
