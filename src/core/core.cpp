@@ -28,6 +28,14 @@ std::optional<std::string> get_environment_variable(const std::string& name)
 
     str_value.assign(value, size);
 #else
+    auto* value = getenv(name.c_str());
+
+    if (value == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    str_value = value;
 #endif
 
     return str_value;
