@@ -28,7 +28,19 @@ void engine::initialize()
         SPDLOG_INFO("VK_LAYER_PATH = '{}'.", vk_layer_path_env.value());
     }
 
-    layers_.emplace_back("VK_LAYER_KHRONOS_validation");
+    if (!has_environment_variable("VKT_DISABLE_VALIDATION"))
+    {
+        layers_.emplace_back("VK_LAYER_KHRONOS_validation");
+    }
+    else
+    {
+        SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    }
 
     instance_extensions_.emplace_back("VK_KHR_surface");
     instance_extensions_.emplace_back("VK_EXT_debug_report");
@@ -61,6 +73,16 @@ void engine::destroy()
     destroy_debug_utils_ext_();
     destroy_instance_();
     destroy_sdl_window_();
+
+    if (has_environment_variable("VKT_DISABLE_VALIDATION"))
+    {
+        SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    }
 }
 
 int engine::run()
@@ -129,10 +151,10 @@ void engine::create_instance_()
 
     create_info
         .setEnabledExtensionCount(instance_extensions_.size())
-        .setEnabledLayerCount(layers_.size())
-        .setPApplicationInfo(&application_info)
         .setPpEnabledExtensionNames(instance_extensions_.data())
-        .setPpEnabledLayerNames(layers_.data());
+        .setEnabledLayerCount(layers_.size())
+        .setPpEnabledLayerNames(layers_.data())
+        .setPApplicationInfo(&application_info);
 
     vk::Result result = vk::createInstance(&create_info, nullptr, &instance_);
 
@@ -226,9 +248,9 @@ void engine::enumerate_physical_devices_()
 {
     SPDLOG_INFO("Enumerating physical devices...");
 
-    const auto physical_devices = instance_.enumeratePhysicalDevices(dispatch_);
+    const auto wm_info = sdl_window_->get_system_wm_info();
 
-    bool get_surface_support_failed{ false };
+    const auto physical_devices = instance_.enumeratePhysicalDevices(dispatch_);
 
     for (auto physical_device : physical_devices)
     {
@@ -266,13 +288,11 @@ void engine::enumerate_physical_devices_()
 
             vk::Bool32 present_support{ false };
 
-            const auto result = physical_device.getSurfaceSupportKHR(queue_family_index, surface_, &present_support, dispatch_);
+            auto result = physical_device.getSurfaceSupportKHR(queue_family_index, surface_, &present_support, dispatch_);
 
             if (result != vk::Result::eSuccess)
             {
-                SPDLOG_ERROR("Querying surface support has failed: '{}'.", vk::to_string(result));
-
-                get_surface_support_failed = true;
+                SPDLOG_WARN("Querying surface support has failed: '{}'.", vk::to_string(result));
             }
             else if (present_support)
             {
@@ -281,16 +301,25 @@ void engine::enumerate_physical_devices_()
                 new_info.present_family_queue_indices_.emplace_back(queue_family_index);
             }
 
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+            if (get_environment_variable("SDL_VIDEODRIVER") == "wayland")
+            {
+                present_support = physical_device.getWaylandPresentationSupportKHR(queue_family_index, wm_info.info.wl.display, dispatch_);
+
+                if (present_support)
+                {
+                    SPDLOG_INFO("Surface is supported for Wayland by queue family index {}.", queue_family_index);
+
+                    new_info.present_family_queue_indices_.emplace_back(queue_family_index);
+                }
+            }
+#endif
+
             queue_family_index++;
         }
     }
 
     SPDLOG_INFO("Enumerated physical devices.");
-
-    if (get_surface_support_failed)
-    {
-        throw std::runtime_error("Querying surface support has failed.");
-    }
 }
 
 void engine::select_physical_device_()
