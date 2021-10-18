@@ -74,4 +74,11 @@ bool has_environment_variable(const std::string& name);
 class engine;
 class sdl_window;
 
+inline void throw_exception(std::string message)
+{
+    SPDLOG_CRITICAL("Exception thrown: '{}'.", message);
+
+    throw std::runtime_error(message);
+}
+
 #endif

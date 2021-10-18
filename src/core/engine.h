@@ -17,6 +17,18 @@ struct physical_device_info
     std::vector<uint32_t> present_family_queue_indices_;
 };
 
+struct swapchain_info
+{
+    vk::SurfaceCapabilities2KHR capabilities;
+    std::vector<vk::SurfaceFormat2KHR> surface_formats;
+    std::vector<vk::PresentModeKHR> present_modes;
+
+    vk::SurfaceFormat2KHR chosen_surface_format;
+    vk::PresentModeKHR chosen_present_mode;
+    vk::Extent2D chosen_extent;
+    std::uint32_t chosen_image_count;
+};
+
 class engine
 {
 public:
@@ -44,7 +56,10 @@ private:
     void select_physical_device_();
     void create_device_();
     void retrieve_queues_();
+    void query_swapchain_support_();
+    void create_swapchain_();
 
+    void destroy_swapchain_();
     void destroy_device_();
     void destroy_surface_();
     void destroy_debug_utils_ext_();
@@ -85,6 +100,15 @@ private:
     vk::Queue present_queue_{ nullptr };
 
     vk::SurfaceKHR surface_{ nullptr };
+
+    swapchain_info swapchain_info_;
+
+    vk::Format preferred_format_{ vk::Format::eB8G8R8A8Srgb };
+    vk::ColorSpaceKHR preferred_color_space_{ vk::ColorSpaceKHR::eSrgbNonlinear };
+    vk::PresentModeKHR preferred_present_mode_{ vk::PresentModeKHR::eMailbox };
+    std::uint32_t preferred_extra_image_count_{ 1 };
+
+    vk::SwapchainKHR swapchain_{ nullptr };
 
     friend VkBool32 messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,

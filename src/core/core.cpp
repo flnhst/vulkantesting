@@ -4,7 +4,7 @@ void assert_vulkan_result(const vk::Result& result, const std::string& failure_m
 {
     if (result != vk::Result::eSuccess)
     {
-        throw std::runtime_error(fmt::format("Vulkan API call failed: '{}', result = '{}'.", failure_message, vk::to_string(result)));
+        throw_exception(fmt::format("Vulkan API call failed: '{}', result = '{}'.", failure_message, vk::to_string(result)));
     }
 }
 

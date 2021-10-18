@@ -18,18 +18,8 @@ void initialize_logging()
     spdlog::set_pattern("%T.%f %-7t %-20s %-8l : %^%v%$");
 }
 
-#ifdef WIN32
-int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
-#else
-int main(int argc, char* argv[])
-#endif
+int inner_main()
 {
-#ifdef WIN32
-    AllocConsole();
-#endif
-
-    initialize_logging();
-
     SPDLOG_INFO("Vulkan testing started.");
 
     SPDLOG_INFO("Initializing engine...");
@@ -46,7 +36,7 @@ int main(int argc, char* argv[])
         result = engine_instance.run();
 
         engine_instance.destroy();
-    }
+}
 
     SPDLOG_INFO("Vulkan testing exiting (result = {}).", result);
 
@@ -57,6 +47,39 @@ int main(int argc, char* argv[])
         while (true)
         {
             std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    }
+
+    return result;
+}
+
+#ifdef WIN32
+int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
+#else
+int main(int argc, char* argv[])
+#endif
+{
+#ifdef WIN32
+    AllocConsole();
+#endif
+
+    initialize_logging();
+
+    int result;
+
+    if (IsDebuggerPresent())
+    {
+        result = inner_main();
+    }
+    else
+    {
+        try
+        {
+            result = inner_main();
+        }
+        catch (const std::exception& e)
+        {
+            SPDLOG_CRITICAL("Exeption caught: '{}'.", e.what());
         }
     }
 

@@ -9,14 +9,7 @@ engine::engine()
 
 engine::~engine()
 {
-    if (messages_emitted_ == 0)
-    {
-        SPDLOG_DEBUG("No messages were emitted during the lifetime of the debug messenger callback.");
-    }
-    else
-    {
-        SPDLOG_WARN("{} messages were emitted during the lifetime of the debug messenger callback.", messages_emitted_);
-    }
+
 }
 
 void engine::initialize()
@@ -42,18 +35,19 @@ void engine::initialize()
         SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     }
 
-    instance_extensions_.emplace_back("VK_KHR_surface");
-    instance_extensions_.emplace_back("VK_EXT_debug_report");
-    instance_extensions_.emplace_back("VK_EXT_debug_utils");
+    instance_extensions_.emplace_back(VK_KHR_SURFACE_EXTENSION_NAME);
+    instance_extensions_.emplace_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+    instance_extensions_.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    instance_extensions_.emplace_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
 
 #ifdef WIN32
-    instance_extensions_.emplace_back("VK_KHR_win32_surface");
+    instance_extensions_.emplace_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
 #else
-    instance_extensions_.emplace_back("VK_KHR_xlib_surface");
-    instance_extensions_.emplace_back("VK_KHR_wayland_surface");
+    instance_extensions_.emplace_back(VK_KHR_XLIB_SURFACE_EXTENSION_NAME);
+    instance_extensions_.emplace_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
 #endif
 
-    device_extensions_.push_back("VK_KHR_swapchain");
+    device_extensions_.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
     create_sdl_window_();
     create_instance_();
@@ -63,11 +57,13 @@ void engine::initialize()
     select_physical_device_();
     create_device_();
     retrieve_queues_();
-
+    query_swapchain_support_();
+    create_swapchain_();
 }
 
 void engine::destroy()
 {
+    destroy_swapchain_();
     destroy_device_();
     destroy_surface_();
     destroy_debug_utils_ext_();
@@ -268,7 +264,7 @@ void engine::enumerate_physical_devices_()
 
         for (auto present_mode : present_modes)
         {
-            SPDLOG_INFO("Physical device support present mode '{}'.", vk::to_string(present_mode));
+            SPDLOG_INFO("Physical device and surface supports present mode '{}'.", vk::to_string(present_mode));
         }
 
         std::uint32_t queue_family_index{ 0 };
@@ -351,7 +347,7 @@ void engine::select_physical_device_()
 
     if (selected_physical_device_info_ == nullptr)
     {
-        throw std::runtime_error("Failed to select physical device.");
+        throw_exception("Failed to select physical device.");
     }
 }
 
@@ -406,6 +402,121 @@ void engine::retrieve_queues_()
     SPDLOG_INFO("Retrieved queues.");
 }
 
+void engine::query_swapchain_support_()
+{
+    SPDLOG_INFO("Querying swapchain support...");
+
+    swapchain_info_.capabilities = selected_physical_device_info_->physical_device.getSurfaceCapabilities2KHR(surface_, dispatch_);
+    swapchain_info_.surface_formats = selected_physical_device_info_->physical_device.getSurfaceFormats2KHR(surface_, dispatch_);
+    swapchain_info_.present_modes = selected_physical_device_info_->physical_device.getSurfacePresentModesKHR(surface_, dispatch_);
+
+    bool preferred_format_found{ false };
+
+    for (const auto format : swapchain_info_.surface_formats)
+    {
+        if (format.surfaceFormat.format == preferred_format_ && format.surfaceFormat.colorSpace == preferred_color_space_)
+        {
+            swapchain_info_.chosen_surface_format = format;
+
+            preferred_format_found = true;
+
+            break;
+        }
+    }
+
+    if (!preferred_format_found)
+    {
+        throw_exception(fmt::format("Could not find format '{}' and color space '{}'.", vk::to_string(preferred_format_), vk::to_string(preferred_color_space_)));
+    }
+
+    SPDLOG_INFO("Format '{}' and color space '{}' chosen.", vk::to_string(swapchain_info_.chosen_surface_format.surfaceFormat.format), vk::to_string(swapchain_info_.chosen_surface_format.surfaceFormat.colorSpace));
+
+    bool preferred_present_mode_found{ false };
+
+    for (const auto present_mode : swapchain_info_.present_modes)
+    {
+        if (present_mode == preferred_present_mode_)
+        {
+            swapchain_info_.chosen_present_mode = present_mode;
+
+            preferred_present_mode_found = true;
+
+            break;
+        }
+    }
+
+    if (!preferred_present_mode_found)
+    {
+        throw_exception(fmt::format("Could not find present mode '{}'.", vk::to_string(preferred_present_mode_)));
+    }
+
+    SPDLOG_INFO("Present mode '{}' chosen.", vk::to_string(swapchain_info_.chosen_present_mode));
+
+    swapchain_info_.chosen_extent = swapchain_info_.capabilities.surfaceCapabilities.currentExtent;
+
+    SPDLOG_INFO("Extent chosen has width '{}' and height '{}'.", swapchain_info_.chosen_extent.width, swapchain_info_.chosen_extent.height);
+
+    swapchain_info_.chosen_image_count = swapchain_info_.capabilities.surfaceCapabilities.minImageCount + preferred_extra_image_count_;
+
+    if (swapchain_info_.capabilities.surfaceCapabilities.maxImageCount > 0 && swapchain_info_.chosen_image_count > swapchain_info_.capabilities.surfaceCapabilities.maxImageCount)
+    {
+        swapchain_info_.chosen_image_count = swapchain_info_.capabilities.surfaceCapabilities.maxImageCount;
+    }
+
+    SPDLOG_INFO("Chosen image count is '{}'.", swapchain_info_.chosen_image_count);
+
+    SPDLOG_INFO("Queried swapchain support.");
+}
+
+void engine::create_swapchain_()
+{
+    SPDLOG_INFO("Creating swapchain...");
+
+    vk::SwapchainCreateInfoKHR create_info{};
+
+    create_info
+        .setSurface(surface_)
+        .setMinImageCount(swapchain_info_.chosen_image_count)
+        .setImageFormat(swapchain_info_.chosen_surface_format.surfaceFormat.format)
+        .setImageColorSpace(swapchain_info_.chosen_surface_format.surfaceFormat.colorSpace)
+        .setImageExtent(swapchain_info_.chosen_extent)
+        .setImageArrayLayers(1)
+        .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment)
+        .setImageSharingMode(vk::SharingMode::eExclusive)
+        .setPreTransform(swapchain_info_.capabilities.surfaceCapabilities.currentTransform)
+        .setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
+        .setPresentMode(swapchain_info_.chosen_present_mode)
+        .setClipped(true);
+
+    std::vector<std::uint32_t> queue_families;
+
+    queue_families.emplace_back(graphics_queue_family_index_);
+    queue_families.emplace_back(present_queue_family_index_);
+
+    if (graphics_queue_family_index_ != present_queue_family_index_)
+    {
+        create_info
+            .setImageSharingMode(vk::SharingMode::eConcurrent)
+            .setQueueFamilyIndexCount(2)
+            .setPQueueFamilyIndices(queue_families.data());
+    }
+
+    const auto result = device_.createSwapchainKHR(&create_info, nullptr, &swapchain_, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to create swapchain.");
+
+    SPDLOG_INFO("Created swapchain.");
+}
+
+void engine::destroy_swapchain_()
+{
+    SPDLOG_TRACE("Destroying swapchain...");
+
+    device_.destroySwapchainKHR(swapchain_, nullptr, dispatch_);
+
+    SPDLOG_TRACE("Destroyed swapchain.");
+}
+
 void engine::destroy_device_()
 {
     SPDLOG_TRACE("Destroying device...");
@@ -426,6 +537,15 @@ void engine::destroy_surface_()
 
 void engine::destroy_debug_utils_ext_()
 {
+    if (messages_emitted_ == 0)
+    {
+        SPDLOG_DEBUG("No messages were emitted during the lifetime of the debug messenger callback.");
+    }
+    else
+    {
+        SPDLOG_WARN("{} messages were emitted during the lifetime of the debug messenger callback.", messages_emitted_);
+    }
+
     SPDLOG_TRACE("Destroying debug utils messenger...");
 
     instance_.destroy(debug_utils_messenger_, nullptr, dispatch_);
