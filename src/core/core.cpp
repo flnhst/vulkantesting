@@ -43,3 +43,25 @@ bool has_environment_variable(const std::string& name)
 {
     return get_environment_variable(name).has_value();
 }
+
+std::vector<char> read_file(const std::string& filename)
+{
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+
+    if (!file.is_open())
+    {
+        throw_exception(fmt::format("Could not open file '{}'.", filename));
+    }
+
+    const std::size_t file_size = static_cast<std::size_t>(file.tellg());
+
+    std::vector<char> buffer(file_size);
+
+    file.seekg(0);
+
+    file.read(buffer.data(), file_size);
+
+    file.close();
+
+    return buffer;
+}

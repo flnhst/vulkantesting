@@ -11,6 +11,7 @@
 #include <chrono>
 #include <set>
 #include <optional>
+#include <fstream>
 
 #include "log/log.h"
 
@@ -80,5 +81,7 @@ inline void throw_exception(std::string message)
 
     throw std::runtime_error(message);
 }
+
+std::vector<char> read_file(const std::string& filename);
 
 #endif

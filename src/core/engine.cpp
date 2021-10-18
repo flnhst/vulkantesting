@@ -62,6 +62,7 @@ void engine::initialize()
     query_swapchain_support_();
     create_swapchain_();
     retrieve_swapchain_images_();
+    create_render_pass_();
     create_graphics_pipeline_();
 
     SPDLOG_INFO("Initialized.");
@@ -72,6 +73,7 @@ void engine::destroy()
     SPDLOG_TRACE("Destroying everything...");
 
     destroy_graphics_pipeline_();
+    destroy_render_pass_();
     destroy_swapchain_image_views_();
     destroy_swapchain_();
     destroy_device_();
@@ -560,22 +562,219 @@ void engine::retrieve_swapchain_images_()
     SPDLOG_INFO("Retrieved swapchain images.");
 }
 
+void engine::create_render_pass_()
+{
+    SPDLOG_INFO("Creating render pass...");
+
+    vk::AttachmentDescription color_attachment{};
+
+    color_attachment
+        .setFormat(swapchain_info_.chosen_surface_format.surfaceFormat.format)
+        .setSamples(vk::SampleCountFlagBits::e1)
+        .setLoadOp(vk::AttachmentLoadOp::eClear)
+        .setStoreOp(vk::AttachmentStoreOp::eStore)
+        .setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
+        .setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
+        .setInitialLayout(vk::ImageLayout::eUndefined)
+        .setFinalLayout(vk::ImageLayout::ePresentSrcKHR);
+
+    vk::AttachmentReference color_attachment_reference{};
+
+    color_attachment_reference
+        .setAttachment(0)
+        .setLayout(vk::ImageLayout::eColorAttachmentOptimal);
+
+    vk::SubpassDescription subpass_description{};
+
+    subpass_description
+        .setColorAttachmentCount(1)
+        .setPColorAttachments(&color_attachment_reference);
+
+    vk::RenderPassCreateInfo create_info{};
+
+    create_info
+        .setAttachmentCount(1)
+        .setPAttachments(&color_attachment)
+        .setSubpassCount(1)
+        .setPSubpasses(&subpass_description);
+
+    const auto result = device_.createRenderPass(&create_info, nullptr, &render_pass_, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to create render pass.");
+
+    SPDLOG_INFO("Created render pass.");
+}
+
 void engine::create_graphics_pipeline_()
 {
     SPDLOG_INFO("Creating graphics pipeline...");
 
+    SPDLOG_INFO("Reading SPIRV files...");
 
+    const auto vert_shader_code = read_file(VERT_SHADER_FILENAME);
+    const auto frag_shader_code = read_file(FRAG_SHADER_FILENAME);
+
+    SPDLOG_INFO("Vertex shader binary size is {} bytes.", vert_shader_code.size());
+    SPDLOG_INFO("Fragment shader binary size is {} bytes.", frag_shader_code.size());
+
+    SPDLOG_INFO("Read SPIRV files.");
+
+    SPDLOG_INFO("Creating shader modules...");
+
+    const auto vert_shader_module = create_shader_module_(VERT_SHADER_FILENAME, vert_shader_code);
+    const auto frag_shader_module = create_shader_module_(FRAG_SHADER_FILENAME, frag_shader_code);
+
+    SPDLOG_INFO("Creating shader modules.");
+
+    vk::PipelineShaderStageCreateInfo vert_create_info{};
+
+    vert_create_info
+        .setStage(vk::ShaderStageFlagBits::eVertex)
+        .setModule(vert_shader_module)
+        .setPName("main");
+
+    vk::PipelineShaderStageCreateInfo frag_create_info{};
+
+    frag_create_info
+        .setStage(vk::ShaderStageFlagBits::eFragment)
+        .setModule(frag_shader_module)
+        .setPName("main");
+
+    vk::PipelineShaderStageCreateInfo shader_stages[] = { vert_create_info, frag_create_info };
+
+    vk::PipelineVertexInputStateCreateInfo pipeline_vertex_input_state_create_info{};
+
+    vk::PipelineInputAssemblyStateCreateInfo pipeline_input_assembly_state_create_info{};
+
+    pipeline_input_assembly_state_create_info
+        .setTopology(vk::PrimitiveTopology::eTriangleList);
+
+    vk::Viewport viewport{};
+
+    viewport
+        .setX(0.0f)
+        .setY(0.0f)
+        .setWidth(swapchain_info_.chosen_extent.width)
+        .setHeight(swapchain_info_.chosen_extent.height)
+        .setMinDepth(0.0f)
+        .setMaxDepth(1.0f);
+
+    vk::Rect2D scissor{};
+
+    scissor
+        .setOffset(vk::Offset2D{ 0, 0 })
+        .setExtent(swapchain_info_.chosen_extent);
+
+    vk::PipelineViewportStateCreateInfo pipeline_viewport_state_create_info{};
+
+    pipeline_viewport_state_create_info
+        .setScissorCount(1)
+        .setPScissors(&scissor)
+        .setViewportCount(1)
+        .setPViewports(&viewport);
+
+    vk::PipelineRasterizationStateCreateInfo pipeline_rasterization_state_create_info{};
+
+    pipeline_rasterization_state_create_info
+        .setDepthClampEnable(false)
+        .setRasterizerDiscardEnable(false)
+        .setPolygonMode(vk::PolygonMode::eFill)
+        .setLineWidth(1.0f)
+        .setCullMode(vk::CullModeFlagBits::eBack)
+        .setFrontFace(vk::FrontFace::eClockwise);
+
+    vk::PipelineMultisampleStateCreateInfo pipeline_multisample_state_create_info{};
+
+    pipeline_multisample_state_create_info
+        .setSampleShadingEnable(false)
+        .setRasterizationSamples(vk::SampleCountFlagBits::e1);
+
+    vk::PipelineColorBlendAttachmentState pipeline_color_blend_attachment_state{};
+
+    pipeline_color_blend_attachment_state
+        .setColorWriteMask(vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA)
+        .setBlendEnable(false);
+
+    vk::PipelineColorBlendStateCreateInfo pipeline_color_blend_state_create_info{};
+
+    pipeline_color_blend_state_create_info
+        .setLogicOpEnable(false)
+        .setAttachmentCount(1)
+        .setPAttachments(&pipeline_color_blend_attachment_state);
+
+    vk::PipelineLayoutCreateInfo pipeline_layout_create_info{};
+
+    auto result = device_.createPipelineLayout(&pipeline_layout_create_info, nullptr, &pipeline_layout_, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to create pipeline layout.");
+
+    vk::GraphicsPipelineCreateInfo create_info{};
+
+    create_info
+        .setStageCount(2)
+        .setPStages(shader_stages)
+        .setPInputAssemblyState(&pipeline_input_assembly_state_create_info)
+        .setPVertexInputState(&pipeline_vertex_input_state_create_info)
+        .setPViewportState(&pipeline_viewport_state_create_info)
+        .setPRasterizationState(&pipeline_rasterization_state_create_info)
+        .setPMultisampleState(&pipeline_multisample_state_create_info)
+        .setPColorBlendState(&pipeline_color_blend_state_create_info)
+        .setLayout(pipeline_layout_)
+        .setRenderPass(render_pass_);
+
+    result = device_.createGraphicsPipelines(nullptr, 1, &create_info, nullptr, &graphics_pipeline_, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to create graphics pipeline.");
 
     SPDLOG_INFO("Created graphics pipeline.");
+
+    SPDLOG_INFO("Destroying shader modules...");
+
+    device_.destroyShaderModule(vert_shader_module, nullptr, dispatch_);
+    device_.destroyShaderModule(frag_shader_module, nullptr, dispatch_);
+
+    SPDLOG_INFO("Destroyed shader modules.");
+}
+
+vk::ShaderModule engine::create_shader_module_(const std::string& name, const std::vector<char>& binary)
+{
+    SPDLOG_INFO("Creating shader module for '{}'...", name);
+
+    vk::ShaderModuleCreateInfo create_info{};
+
+    create_info
+        .setPCode(reinterpret_cast<const std::uint32_t*>(binary.data()))
+        .setCodeSize(binary.size());
+
+    vk::ShaderModule shader_module;
+
+    const auto result = device_.createShaderModule(&create_info, nullptr, &shader_module, dispatch_);
+
+    EVK_ASSERT_RESULT(result, fmt::format("Failed to create shader module for '{}'.", name));
+
+    SPDLOG_INFO("Created shader module for '{}'.", name);
+
+    return shader_module;
 }
 
 void engine::destroy_graphics_pipeline_()
 {
     SPDLOG_TRACE("Destroying graphics pipeline...");
 
+    device_.destroyPipelineLayout(pipeline_layout_, nullptr, dispatch_);
 
+    device_.destroyPipeline(graphics_pipeline_, nullptr, dispatch_);
 
     SPDLOG_TRACE("Destroyed graphics pipeline.");
+}
+
+void engine::destroy_render_pass_()
+{
+    SPDLOG_TRACE("Destroying render pass...");
+
+    device_.destroyRenderPass(render_pass_, nullptr, dispatch_);
+
+    SPDLOG_TRACE("Destroyed render pass.");
 }
 
 void engine::destroy_swapchain_image_views_()

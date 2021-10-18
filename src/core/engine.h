@@ -51,6 +51,9 @@ public:
 #endif
     static constexpr std::uint32_t PREFERRED_EXTRA_IMAGE_COUNT{ 1 };
 
+    static constexpr char* VERT_SHADER_FILENAME{ "spv/vert.spv" };
+    static constexpr char* FRAG_SHADER_FILENAME{ "spv/frag.spv" };
+
     engine();
     ~engine();
 
@@ -78,9 +81,12 @@ private:
     void query_swapchain_support_();
     void create_swapchain_();
     void retrieve_swapchain_images_();
+    void create_render_pass_();
     void create_graphics_pipeline_();
+    vk::ShaderModule create_shader_module_(const std::string& name, const std::vector<char>& binary);
 
     void destroy_graphics_pipeline_();
+    void destroy_render_pass_();
     void destroy_swapchain_image_views_();
     void destroy_swapchain_();
     void destroy_device_();
@@ -125,6 +131,12 @@ private:
     vk::SwapchainKHR swapchain_{ nullptr };
 
     std::vector<swapchain_image> swapchain_images_;
+
+    vk::RenderPass render_pass_{ nullptr };
+
+    vk::PipelineLayout pipeline_layout_{ nullptr };
+
+    vk::Pipeline graphics_pipeline_{ nullptr };
 
     friend VkBool32 messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
