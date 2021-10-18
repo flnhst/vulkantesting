@@ -264,6 +264,13 @@ void engine::enumerate_physical_devices_()
 
         SPDLOG_INFO("Found physical device: '{}'.", new_info.properties.properties.deviceName);
 
+        const auto present_modes = physical_device.getSurfacePresentModesKHR(surface_, dispatch_);
+
+        for (auto present_mode : present_modes)
+        {
+            SPDLOG_INFO("Physical device support present mode '{}'.", vk::to_string(present_mode));
+        }
+
         std::uint32_t queue_family_index{ 0 };
 
         for (auto queue_family : new_info.queue_families)
@@ -288,7 +295,7 @@ void engine::enumerate_physical_devices_()
 
             vk::Bool32 present_support{ false };
 
-            auto result = physical_device.getSurfaceSupportKHR(queue_family_index, surface_, &present_support, dispatch_);
+            const auto result = physical_device.getSurfaceSupportKHR(queue_family_index, surface_, &present_support, dispatch_);
 
             if (result != vk::Result::eSuccess)
             {
