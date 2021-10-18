@@ -67,7 +67,11 @@ int main(int argc, char* argv[])
 
     int result;
 
+#ifdef WIN32
     if (IsDebuggerPresent())
+#else
+    if (true)
+#endif
     {
         result = inner_main();
     }

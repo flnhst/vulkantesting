@@ -105,7 +105,11 @@ private:
 
     vk::Format preferred_format_{ vk::Format::eB8G8R8A8Srgb };
     vk::ColorSpaceKHR preferred_color_space_{ vk::ColorSpaceKHR::eSrgbNonlinear };
+#ifdef WIN32
     vk::PresentModeKHR preferred_present_mode_{ vk::PresentModeKHR::eMailbox };
+#else
+    vk::PresentModeKHR preferred_present_mode_{ vk::PresentModeKHR::eFifo };
+#endif
     std::uint32_t preferred_extra_image_count_{ 1 };
 
     vk::SwapchainKHR swapchain_{ nullptr };
