@@ -64,6 +64,11 @@ void engine::initialize()
     retrieve_swapchain_images_();
     create_render_pass_();
     create_graphics_pipeline_();
+    create_framebuffers_();
+    create_command_pools_();
+    allocate_command_buffers_();
+    record_command_buffers_();
+    create_semaphores_();
 
     SPDLOG_INFO("Initialized.");
 }
@@ -72,6 +77,10 @@ void engine::destroy()
 {
     SPDLOG_TRACE("Destroying everything...");
 
+    destroy_semaphores_();
+    free_command_buffers_();
+    destroy_command_pools_();
+    destroy_framebuffers_();
     destroy_graphics_pipeline_();
     destroy_render_pass_();
     destroy_swapchain_image_views_();
@@ -125,6 +134,8 @@ void engine::main_loop_()
 
     sdl_window_->process_events();
 
+    draw_frame_();
+
     if (first_tick_)
     {
         SPDLOG_INFO("First tick done.");
@@ -133,6 +144,52 @@ void engine::main_loop_()
     }
 
     ticks_++;
+
+    if (ticks_ == 5)
+    {
+        stop();
+    }
+}
+
+void engine::draw_frame_()
+{
+    std::uint32_t swapchain_image_index{ 0 };
+
+    auto result = device_.acquireNextImageKHR(swapchain_, std::numeric_limits<std::uint64_t>::max(), image_available_semaphore_, nullptr, &swapchain_image_index, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to acquire image.");
+
+    const auto& swapchain_image = swapchain_images_[swapchain_image_index];
+
+    const vk::PipelineStageFlags wait_dst_stage_mask[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
+
+    vk::SubmitInfo submit_info{};
+
+    submit_info
+        .setWaitSemaphoreCount(1)
+        .setPWaitSemaphores(&image_available_semaphore_)
+        .setPWaitDstStageMask(wait_dst_stage_mask)
+        .setCommandBufferCount(1)
+        .setPCommandBuffers(&swapchain_image.command_buffer)
+        .setSignalSemaphoreCount(1)
+        .setPSignalSemaphores(&render_finished_semaphore_);
+
+    result = graphics_queue_.submit(1, &submit_info, nullptr, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to submit command buffer.");
+
+    vk::PresentInfoKHR present_info{};
+
+    present_info
+        .setWaitSemaphoreCount(1)
+        .setPWaitSemaphores(&render_finished_semaphore_)
+        .setSwapchainCount(1)
+        .setPSwapchains(&swapchain_)
+        .setPImageIndices(&swapchain_image_index);
+
+    result = present_queue_.presentKHR(present_info, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to present.");
 }
 
 void engine::create_sdl_window_()
@@ -590,13 +647,24 @@ void engine::create_render_pass_()
         .setColorAttachmentCount(1)
         .setPColorAttachments(&color_attachment_reference);
 
+    vk::SubpassDependency dependency{};
+
+    dependency
+        .setSrcSubpass(VK_SUBPASS_EXTERNAL)
+        .setDstSubpass(0)
+        .setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
+        .setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
+        .setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite);
+
     vk::RenderPassCreateInfo create_info{};
 
     create_info
         .setAttachmentCount(1)
         .setPAttachments(&color_attachment)
         .setSubpassCount(1)
-        .setPSubpasses(&subpass_description);
+        .setPSubpasses(&subpass_description)
+        .setDependencyCount(1)
+        .setPDependencies(&dependency);
 
     const auto result = device_.createRenderPass(&create_info, nullptr, &render_pass_, dispatch_);
 
@@ -755,6 +823,183 @@ vk::ShaderModule engine::create_shader_module_(const std::string& name, const st
     SPDLOG_INFO("Created shader module for '{}'.", name);
 
     return shader_module;
+}
+
+void engine::create_framebuffers_()
+{
+    SPDLOG_INFO("Creating framebuffers...");
+
+    for (auto& swapchain_image : swapchain_images_)
+    {
+        vk::FramebufferCreateInfo create_info{};
+
+        create_info
+            .setRenderPass(render_pass_)
+            .setAttachmentCount(1)
+            .setPAttachments(&swapchain_image.image_view)
+            .setWidth(swapchain_info_.chosen_extent.width)
+            .setHeight(swapchain_info_.chosen_extent.height)
+            .setLayers(1);
+
+        const auto result = device_.createFramebuffer(&create_info, nullptr, &swapchain_image.framebuffer, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to create framebuffer.");
+    }
+
+    SPDLOG_INFO("Creating framebuffers.");
+}
+
+void engine::create_command_pools_()
+{
+    SPDLOG_INFO("Creating command pools...");
+
+    for (auto& swapchain_image : swapchain_images_)
+    {
+        vk::CommandPoolCreateInfo create_info{};
+
+        create_info
+            .setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer | vk::CommandPoolCreateFlagBits::eResetCommandBuffer)
+            .setQueueFamilyIndex(graphics_queue_family_index_);
+
+        const auto result = device_.createCommandPool(&create_info, nullptr, &swapchain_image.command_pool, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to create command pool.");
+    }
+
+    SPDLOG_INFO("Created command pools.");
+}
+
+void engine::allocate_command_buffers_()
+{
+    SPDLOG_INFO("Allocating command buffers...");
+
+    for (auto& swapchain_image : swapchain_images_)
+    {
+        vk::CommandBufferAllocateInfo allocate_info{};
+
+        allocate_info
+            .setCommandBufferCount(1)
+            .setCommandPool(swapchain_image.command_pool)
+            .setLevel(vk::CommandBufferLevel::ePrimary);
+
+        const auto result = device_.allocateCommandBuffers(&allocate_info, &swapchain_image.command_buffer, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to allocate command buffer.");
+    }
+
+    SPDLOG_INFO("Allocated command buffers.");
+}
+
+void engine::record_command_buffers_()
+{
+    SPDLOG_INFO("Recording command buffers...");
+
+    for (int i = 0; i < swapchain_images_.size(); i++)
+    {
+        record_command_buffer_(i);
+    }
+
+    SPDLOG_INFO("Recorded command buffers.");
+}
+
+void engine::create_semaphores_()
+{
+    SPDLOG_INFO("Creating semaphores...");
+
+    vk::SemaphoreCreateInfo create_info{};
+
+    auto result = device_.createSemaphore(&create_info, nullptr, &image_available_semaphore_, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
+
+    result = device_.createSemaphore(&create_info, nullptr, &render_finished_semaphore_, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
+
+    SPDLOG_INFO("Creating semaphores.");
+}
+
+void engine::destroy_semaphores_()
+{
+    SPDLOG_TRACE("Destroying semaphores...");
+
+    device_.destroySemaphore(image_available_semaphore_, nullptr, dispatch_);
+    device_.destroySemaphore(render_finished_semaphore_, nullptr, dispatch_);
+
+    SPDLOG_TRACE("Destroyed semaphores.");
+}
+
+void engine::record_command_buffer_(std::uint32_t swapchain_image_index)
+{
+    const auto& swapchain_image = swapchain_images_[swapchain_image_index];
+
+    const auto& cmd_buffer = swapchain_image.command_buffer;
+
+    vk::CommandBufferBeginInfo begin_info{};
+
+    cmd_buffer.begin(begin_info, dispatch_);
+
+    vk::RenderPassBeginInfo render_pass_begin_info{};
+
+    vk::ClearValue clear_color{};
+
+    clear_color.color.setFloat32({ 0.0f, 0.0f, 0.0f, 1.0f });
+
+    render_pass_begin_info
+        .setRenderPass(render_pass_)
+        .setFramebuffer(swapchain_image.framebuffer)
+        .setClearValueCount(1)
+        .setClearValues(clear_color);
+
+    render_pass_begin_info.renderArea
+        .setOffset(vk::Offset2D{ 0, 0 })
+        .setExtent(swapchain_info_.chosen_extent);
+
+    cmd_buffer.beginRenderPass(render_pass_begin_info, vk::SubpassContents::eInline, dispatch_);
+
+    cmd_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline_, dispatch_);
+
+    cmd_buffer.draw(3, 1, 0, 0, dispatch_);
+
+    cmd_buffer.endRenderPass(dispatch_);
+
+    cmd_buffer.end(dispatch_);
+}
+
+void engine::free_command_buffers_()
+{
+    SPDLOG_TRACE("Freeing command buffers...");
+
+    for (const auto& swapchain_image : swapchain_images_)
+    {
+        device_.freeCommandBuffers(swapchain_image.command_pool, 1, &swapchain_image.command_buffer, dispatch_);
+    }
+
+    SPDLOG_TRACE("Freed command buffers.");
+}
+
+void engine::destroy_command_pools_()
+{
+    SPDLOG_TRACE("Destroying command pools...");
+
+    for (const auto& swapchain_image : swapchain_images_)
+    {
+        device_.destroyCommandPool(swapchain_image.command_pool, nullptr, dispatch_);
+    }
+
+    SPDLOG_TRACE("Destroyed command pools.");
+}
+
+void engine::destroy_framebuffers_()
+{
+    SPDLOG_TRACE("Destroying framebuffers...");
+
+    for (const auto& swapchain_image : swapchain_images_)
+    {
+        device_.destroyFramebuffer(swapchain_image.framebuffer, nullptr, dispatch_);
+    }
+
+    SPDLOG_TRACE("Destroyed framebuffers.");
 }
 
 void engine::destroy_graphics_pipeline_()

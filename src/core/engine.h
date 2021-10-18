@@ -5,10 +5,10 @@
 
 struct physical_device_info
 {
-    vk::PhysicalDevice physical_device;
+    vk::PhysicalDevice physical_device{ nullptr };
 
-    vk::PhysicalDeviceProperties2 properties;
-    vk::PhysicalDeviceFeatures2 features;
+    vk::PhysicalDeviceProperties2 properties{};
+    vk::PhysicalDeviceFeatures2 features{};
     std::vector<vk::QueueFamilyProperties2> queue_families;
 
     std::vector<uint32_t> graphics_family_queue_indices_;
@@ -19,20 +19,28 @@ struct physical_device_info
 
 struct swapchain_info
 {
-    vk::SurfaceCapabilities2KHR capabilities;
+    vk::SurfaceCapabilities2KHR capabilities{};
     std::vector<vk::SurfaceFormat2KHR> surface_formats;
     std::vector<vk::PresentModeKHR> present_modes;
 
-    vk::SurfaceFormat2KHR chosen_surface_format;
-    vk::PresentModeKHR chosen_present_mode;
-    vk::Extent2D chosen_extent;
-    std::uint32_t chosen_image_count;
+    vk::SurfaceFormat2KHR chosen_surface_format{};
+    vk::PresentModeKHR chosen_present_mode{};
+    vk::Extent2D chosen_extent{};
+    std::uint32_t chosen_image_count{ 0 };
 };
 
 struct swapchain_image
 {
-    vk::Image image;
-    vk::ImageView image_view;
+    vk::Image image{ nullptr };
+    vk::ImageView image_view{ nullptr };
+
+    vk::Framebuffer framebuffer{ nullptr };
+    vk::CommandPool command_pool{ nullptr };
+
+    vk::CommandBuffer command_buffer{ nullptr };
+
+    vk::Semaphore image_available_semaphore_{ nullptr };
+    vk::Semaphore render_finished_semaphore_{ nullptr };
 };
 
 class engine
@@ -69,6 +77,7 @@ public:
 
 private:
     void main_loop_();
+    void draw_frame_();
 
     void create_sdl_window_();
     void create_instance_();
@@ -84,7 +93,18 @@ private:
     void create_render_pass_();
     void create_graphics_pipeline_();
     vk::ShaderModule create_shader_module_(const std::string& name, const std::vector<char>& binary);
+    void create_framebuffers_();
+    void create_command_pools_();
+    void allocate_command_buffers_();
+    void record_command_buffers_();
+    void create_semaphores_();
 
+    void record_command_buffer_(std::uint32_t swapchain_image_index);
+
+    void destroy_semaphores_();
+    void free_command_buffers_();
+    void destroy_command_pools_();
+    void destroy_framebuffers_();
     void destroy_graphics_pipeline_();
     void destroy_render_pass_();
     void destroy_swapchain_image_views_();
@@ -137,6 +157,8 @@ private:
     vk::PipelineLayout pipeline_layout_{ nullptr };
 
     vk::Pipeline graphics_pipeline_{ nullptr };
+
+
 
     friend VkBool32 messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
