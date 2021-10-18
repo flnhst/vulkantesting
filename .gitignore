@@ -23,6 +23,8 @@ tmp/*
 !tmp/.gitkeep
 logs/*
 !logs/.gitkeep
+spv/*
+!spv/.gitkeep
 CMakeSettings.json
 CMakePresets.json
 CMakeVariables.json

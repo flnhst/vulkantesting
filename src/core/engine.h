@@ -29,9 +29,28 @@ struct swapchain_info
     std::uint32_t chosen_image_count;
 };
 
+struct swapchain_image
+{
+    vk::Image image;
+    vk::ImageView image_view;
+};
+
 class engine
 {
 public:
+    static constexpr int VULKAN_MAJOR{ 1 };
+    static constexpr int VULKAN_MINOR{ 2 };
+    static constexpr int VULKAN_PATCH{ 168 };
+
+    static constexpr vk::Format PREFERRED_FORMAT{ vk::Format::eB8G8R8A8Srgb };
+    static constexpr vk::ColorSpaceKHR PREFERRED_COLOR_SPACE{ vk::ColorSpaceKHR::eSrgbNonlinear };
+#ifdef WIN32
+    static constexpr vk::PresentModeKHR PREFERRED_PRESENT_MODE{ vk::PresentModeKHR::eMailbox };
+#else
+    static constexpr vk::PresentModeKHR PREFERRED_PRESENT_MODE{ vk::PresentModeKHR::eFifo };
+#endif
+    static constexpr std::uint32_t PREFERRED_EXTRA_IMAGE_COUNT{ 1 };
+
     engine();
     ~engine();
 
@@ -58,7 +77,11 @@ private:
     void retrieve_queues_();
     void query_swapchain_support_();
     void create_swapchain_();
+    void retrieve_swapchain_images_();
+    void create_graphics_pipeline_();
 
+    void destroy_graphics_pipeline_();
+    void destroy_swapchain_image_views_();
     void destroy_swapchain_();
     void destroy_device_();
     void destroy_surface_();
@@ -81,10 +104,6 @@ private:
     vk::Instance instance_{ nullptr };
     vk::DispatchLoaderDynamic dispatch_;
 
-    int vulkan_major_{ 1 };
-    int vulkan_minor_{ 2 };
-    int vulkan_patch_{ 168 };
-
     std::uint64_t messages_emitted_{ 0 };
     vk::DebugUtilsMessengerEXT debug_utils_messenger_{ nullptr };
 
@@ -103,16 +122,9 @@ private:
 
     swapchain_info swapchain_info_;
 
-    vk::Format preferred_format_{ vk::Format::eB8G8R8A8Srgb };
-    vk::ColorSpaceKHR preferred_color_space_{ vk::ColorSpaceKHR::eSrgbNonlinear };
-#ifdef WIN32
-    vk::PresentModeKHR preferred_present_mode_{ vk::PresentModeKHR::eMailbox };
-#else
-    vk::PresentModeKHR preferred_present_mode_{ vk::PresentModeKHR::eFifo };
-#endif
-    std::uint32_t preferred_extra_image_count_{ 1 };
-
     vk::SwapchainKHR swapchain_{ nullptr };
+
+    std::vector<swapchain_image> swapchain_images_;
 
     friend VkBool32 messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,

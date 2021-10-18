@@ -14,6 +14,8 @@ engine::~engine()
 
 void engine::initialize()
 {
+    SPDLOG_INFO("Initializing...");
+
     auto vk_layer_path_env = get_environment_variable("VK_LAYER_PATH");
 
     if (vk_layer_path_env)
@@ -59,10 +61,18 @@ void engine::initialize()
     retrieve_queues_();
     query_swapchain_support_();
     create_swapchain_();
+    retrieve_swapchain_images_();
+    create_graphics_pipeline_();
+
+    SPDLOG_INFO("Initialized.");
 }
 
 void engine::destroy()
 {
+    SPDLOG_TRACE("Destroying everything...");
+
+    destroy_graphics_pipeline_();
+    destroy_swapchain_image_views_();
     destroy_swapchain_();
     destroy_device_();
     destroy_surface_();
@@ -79,6 +89,8 @@ void engine::destroy()
         SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         SPDLOG_CRITICAL("VALIDATION IS DISABLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     }
+
+    SPDLOG_TRACE("Destroyed everything.");
 }
 
 int engine::run()
@@ -137,7 +149,7 @@ void engine::create_instance_()
     vk::ApplicationInfo application_info{};
 
     application_info
-        .setApiVersion(VK_MAKE_VERSION(vulkan_major_, vulkan_minor_, vulkan_patch_))
+        .setApiVersion(VK_MAKE_VERSION(VULKAN_MAJOR, VULKAN_MINOR, VULKAN_PATCH))
         .setPEngineName("vulkantesting")
         .setPApplicationName("vulkantesting")
         .setEngineVersion(1)
@@ -414,7 +426,7 @@ void engine::query_swapchain_support_()
 
     for (const auto format : swapchain_info_.surface_formats)
     {
-        if (format.surfaceFormat.format == preferred_format_ && format.surfaceFormat.colorSpace == preferred_color_space_)
+        if (format.surfaceFormat.format == PREFERRED_FORMAT && format.surfaceFormat.colorSpace == PREFERRED_COLOR_SPACE)
         {
             swapchain_info_.chosen_surface_format = format;
 
@@ -426,7 +438,7 @@ void engine::query_swapchain_support_()
 
     if (!preferred_format_found)
     {
-        throw_exception(fmt::format("Could not find format '{}' and color space '{}'.", vk::to_string(preferred_format_), vk::to_string(preferred_color_space_)));
+        throw_exception(fmt::format("Could not find format '{}' and color space '{}'.", vk::to_string(PREFERRED_FORMAT), vk::to_string(PREFERRED_COLOR_SPACE)));
     }
 
     SPDLOG_INFO("Format '{}' and color space '{}' chosen.", vk::to_string(swapchain_info_.chosen_surface_format.surfaceFormat.format), vk::to_string(swapchain_info_.chosen_surface_format.surfaceFormat.colorSpace));
@@ -435,7 +447,7 @@ void engine::query_swapchain_support_()
 
     for (const auto present_mode : swapchain_info_.present_modes)
     {
-        if (present_mode == preferred_present_mode_)
+        if (present_mode == PREFERRED_PRESENT_MODE)
         {
             swapchain_info_.chosen_present_mode = present_mode;
 
@@ -447,7 +459,7 @@ void engine::query_swapchain_support_()
 
     if (!preferred_present_mode_found)
     {
-        throw_exception(fmt::format("Could not find present mode '{}'.", vk::to_string(preferred_present_mode_)));
+        throw_exception(fmt::format("Could not find present mode '{}'.", vk::to_string(PREFERRED_PRESENT_MODE)));
     }
 
     SPDLOG_INFO("Present mode '{}' chosen.", vk::to_string(swapchain_info_.chosen_present_mode));
@@ -456,7 +468,7 @@ void engine::query_swapchain_support_()
 
     SPDLOG_INFO("Extent chosen has width '{}' and height '{}'.", swapchain_info_.chosen_extent.width, swapchain_info_.chosen_extent.height);
 
-    swapchain_info_.chosen_image_count = swapchain_info_.capabilities.surfaceCapabilities.minImageCount + preferred_extra_image_count_;
+    swapchain_info_.chosen_image_count = swapchain_info_.capabilities.surfaceCapabilities.minImageCount + PREFERRED_EXTRA_IMAGE_COUNT;
 
     if (swapchain_info_.capabilities.surfaceCapabilities.maxImageCount > 0 && swapchain_info_.chosen_image_count > swapchain_info_.capabilities.surfaceCapabilities.maxImageCount)
     {
@@ -506,6 +518,76 @@ void engine::create_swapchain_()
     EVK_ASSERT_RESULT(result, "Failed to create swapchain.");
 
     SPDLOG_INFO("Created swapchain.");
+}
+
+void engine::retrieve_swapchain_images_()
+{
+    SPDLOG_INFO("Retrieving swapchain images...");
+
+    const auto images = device_.getSwapchainImagesKHR(swapchain_, dispatch_);
+
+    for (const auto& image : images)
+    {
+        auto& new_swapchain_image = swapchain_images_.emplace_back();
+
+        new_swapchain_image.image = image;
+
+        vk::ImageViewCreateInfo create_info{};
+
+        create_info
+            .setImage(new_swapchain_image.image)
+            .setViewType(vk::ImageViewType::e2D)
+            .setFormat(swapchain_info_.chosen_surface_format.surfaceFormat.format);
+
+        create_info.components
+            .setR(vk::ComponentSwizzle::eIdentity)
+            .setG(vk::ComponentSwizzle::eIdentity)
+            .setB(vk::ComponentSwizzle::eIdentity)
+            .setA(vk::ComponentSwizzle::eIdentity);
+
+        create_info.subresourceRange
+            .setAspectMask(vk::ImageAspectFlagBits::eColor)
+            .setBaseMipLevel(0)
+            .setLevelCount(1)
+            .setBaseArrayLayer(0)
+            .setLayerCount(1);
+
+        auto result = device_.createImageView(&create_info, nullptr, &new_swapchain_image.image_view, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to create swapchain image view.");
+    }
+
+    SPDLOG_INFO("Retrieved swapchain images.");
+}
+
+void engine::create_graphics_pipeline_()
+{
+    SPDLOG_INFO("Creating graphics pipeline...");
+
+
+
+    SPDLOG_INFO("Created graphics pipeline.");
+}
+
+void engine::destroy_graphics_pipeline_()
+{
+    SPDLOG_TRACE("Destroying graphics pipeline...");
+
+
+
+    SPDLOG_TRACE("Destroyed graphics pipeline.");
+}
+
+void engine::destroy_swapchain_image_views_()
+{
+    SPDLOG_TRACE("Destroying swapchain image views...");
+
+    for (const auto& swapchain_image : swapchain_images_)
+    {
+        device_.destroyImageView(swapchain_image.image_view, nullptr, dispatch_);
+    }
+
+    SPDLOG_TRACE("Destroyed swapchain image views.");
 }
 
 void engine::destroy_swapchain_()
