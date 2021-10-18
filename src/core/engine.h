@@ -51,8 +51,8 @@ public:
 #endif
     static constexpr std::uint32_t PREFERRED_EXTRA_IMAGE_COUNT{ 1 };
 
-    static constexpr char* VERT_SHADER_FILENAME{ "spv/vert.spv" };
-    static constexpr char* FRAG_SHADER_FILENAME{ "spv/frag.spv" };
+    static constexpr const char* VERT_SHADER_FILENAME{ "spv/vert.spv" };
+    static constexpr const char* FRAG_SHADER_FILENAME{ "spv/frag.spv" };
 
     engine();
     ~engine();
