@@ -38,6 +38,16 @@ struct swapchain_image
     vk::CommandPool command_pool{ nullptr };
 
     vk::CommandBuffer command_buffer{ nullptr };
+
+    vk::Fence fence{ nullptr };
+};
+
+struct frame_in_flight
+{
+    vk::Semaphore image_available_semaphore{ nullptr };
+    vk::Semaphore render_finished_semaphore{ nullptr };
+
+    vk::Fence fence{ nullptr };
 };
 
 class engine
@@ -58,6 +68,8 @@ public:
 
     static constexpr const char* VERT_SHADER_FILENAME{ "spv/vert.spv" };
     static constexpr const char* FRAG_SHADER_FILENAME{ "spv/frag.spv" };
+
+    static constexpr std::uint64_t MAXIMUM_FRAMES_IN_FLIGHT{ 3 };
 
     engine();
     ~engine();
@@ -94,11 +106,11 @@ private:
     void create_command_pools_();
     void allocate_command_buffers_();
     void record_command_buffers_();
-    void create_semaphores_();
+    void create_frames_in_flight_();
 
     void record_command_buffer_(std::uint32_t swapchain_image_index);
 
-    void destroy_semaphores_();
+    void destroy_frames_in_flight_();
     void free_command_buffers_();
     void destroy_command_pools_();
     void destroy_framebuffers_();
@@ -148,6 +160,7 @@ private:
     vk::SwapchainKHR swapchain_{ nullptr };
 
     std::vector<swapchain_image> swapchain_images_;
+    std::vector<frame_in_flight> frames_in_flight_;
 
     vk::RenderPass render_pass_{ nullptr };
 
@@ -155,8 +168,15 @@ private:
 
     vk::Pipeline graphics_pipeline_{ nullptr };
 
-    vk::Semaphore image_available_semaphore_{ nullptr };
-    vk::Semaphore render_finished_semaphore_{ nullptr };
+    std::uint64_t current_frame_{ 0 };
+
+    using clock = std::chrono::system_clock;
+
+    clock::time_point start_point_{};
+    clock::time_point last_second_{};
+
+    std::uint64_t second_counter_{ 0 };
+    std::uint64_t fps_counter_{ 0 };
 
     friend VkBool32 messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,

@@ -17,6 +17,8 @@ public:
 
     SDL_SysWMinfo get_system_wm_info();
 
+    void set_title(const std::string& title);
+
 private:
     void on_quit_();
 

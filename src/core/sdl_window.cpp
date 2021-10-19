@@ -35,6 +35,11 @@ SDL_SysWMinfo sdl_window::get_system_wm_info()
     return sdl_window_->get_system_wm_info();
 }
 
+void sdl_window::set_title(const std::string& title)
+{
+    SDL_SetWindowTitle(sdl_window_->handle(), title.c_str());
+}
+
 void sdl_window::on_quit_()
 {
     SPDLOG_INFO("SDL is quitting.");

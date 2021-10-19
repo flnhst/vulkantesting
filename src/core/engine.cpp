@@ -68,7 +68,7 @@ void engine::initialize()
     create_command_pools_();
     allocate_command_buffers_();
     record_command_buffers_();
-    create_semaphores_();
+    create_frames_in_flight_();
 
     SPDLOG_INFO("Initialized.");
 }
@@ -77,7 +77,7 @@ void engine::destroy()
 {
     SPDLOG_TRACE("Destroying everything...");
 
-    destroy_semaphores_();
+    destroy_frames_in_flight_();
     free_command_buffers_();
     destroy_command_pools_();
     destroy_framebuffers_();
@@ -108,10 +108,22 @@ int engine::run()
 {
     SPDLOG_INFO("Engine is running.");
 
+    start_point_ = clock::now();
+
     while (main_loop_running_)
     {
         main_loop_();
     }
+
+    // WAIT IDLE
+    // WAIT IDLE
+    // WAIT IDLE
+    // WAIT IDLE
+    device_.waitIdle(dispatch_);
+    // WAIT IDLE
+    // WAIT IDLE
+    // WAIT IDLE
+    // WAIT IDLE
 
     SPDLOG_INFO("Engine has stopped.");
 
@@ -127,6 +139,19 @@ void engine::stop()
 
 void engine::main_loop_()
 {
+    fps_counter_++;
+
+    if ((clock::now() - last_second_) > std::chrono::seconds(1))
+    {
+        last_second_ = clock::now();
+
+        second_counter_++;
+
+        sdl_window_->set_title(fmt::format("Vulkan Testing: {} second(s) elapsed, {} FPS.", second_counter_, fps_counter_));
+
+        fps_counter_ = 0;
+    }
+    
     if (first_tick_)
     {
         SPDLOG_INFO("First tick started.");
@@ -153,28 +178,47 @@ void engine::main_loop_()
 
 void engine::draw_frame_()
 {
+    const auto& frame_in_flight = frames_in_flight_[current_frame_];
+
+    auto result = device_.waitForFences(1, &frame_in_flight.fence, true, std::numeric_limits<std::uint64_t>::max());
+
+    EVK_ASSERT_RESULT(result, "Failed to wait for fence.");
+
     std::uint32_t swapchain_image_index{ 0 };
 
-    auto result = device_.acquireNextImageKHR(swapchain_, std::numeric_limits<std::uint64_t>::max(), image_available_semaphore_, nullptr, &swapchain_image_index, dispatch_);
+    result = device_.acquireNextImageKHR(swapchain_, std::numeric_limits<std::uint64_t>::max(), frame_in_flight.image_available_semaphore, nullptr, &swapchain_image_index, dispatch_);
 
     EVK_ASSERT_RESULT(result, "Failed to acquire image.");
 
-    const auto& swapchain_image = swapchain_images_[swapchain_image_index];
+    auto& swapchain_image = swapchain_images_[swapchain_image_index];
+
+    if (swapchain_image.fence != static_cast<vk::Fence>(nullptr))
+    {
+        auto result = device_.waitForFences(1, &swapchain_image.fence, true, std::numeric_limits<std::uint64_t>::max());
+
+        EVK_ASSERT_RESULT(result, "Failed to wait for fence.");
+    }
+
+    swapchain_image.fence = frame_in_flight.fence;
 
     const vk::PipelineStageFlags wait_dst_stage_mask[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
+
+    result = device_.resetFences(1, &frame_in_flight.fence, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to reset fence.");
 
     vk::SubmitInfo submit_info{};
 
     submit_info
         .setWaitSemaphoreCount(1)
-        .setPWaitSemaphores(&image_available_semaphore_)
+        .setPWaitSemaphores(&frame_in_flight.image_available_semaphore)
         .setPWaitDstStageMask(wait_dst_stage_mask)
         .setCommandBufferCount(1)
         .setPCommandBuffers(&swapchain_image.command_buffer)
         .setSignalSemaphoreCount(1)
-        .setPSignalSemaphores(&render_finished_semaphore_);
+        .setPSignalSemaphores(&frame_in_flight.render_finished_semaphore);
 
-    result = graphics_queue_.submit(1, &submit_info, nullptr, dispatch_);
+    result = graphics_queue_.submit(1, &submit_info, frame_in_flight.fence, dispatch_);
 
     EVK_ASSERT_RESULT(result, "Failed to submit command buffer.");
 
@@ -182,7 +226,7 @@ void engine::draw_frame_()
 
     present_info
         .setWaitSemaphoreCount(1)
-        .setPWaitSemaphores(&render_finished_semaphore_)
+        .setPWaitSemaphores(&frame_in_flight.render_finished_semaphore)
         .setSwapchainCount(1)
         .setPSwapchains(&swapchain_)
         .setPImageIndices(&swapchain_image_index);
@@ -191,7 +235,7 @@ void engine::draw_frame_()
 
     EVK_ASSERT_RESULT(result, "Failed to present.");
 
-    device_.waitIdle(dispatch_);
+    current_frame_ = (current_frame_ + 1) % MAXIMUM_FRAMES_IN_FLIGHT;
 }
 
 void engine::create_sdl_window_()
@@ -904,31 +948,48 @@ void engine::record_command_buffers_()
     SPDLOG_INFO("Recorded command buffers.");
 }
 
-void engine::create_semaphores_()
+void engine::create_frames_in_flight_()
 {
-    SPDLOG_INFO("Creating semaphores...");
+    SPDLOG_INFO("Creating frames in flight synchronization objects...");
 
-    vk::SemaphoreCreateInfo create_info{};
+    frames_in_flight_.resize(MAXIMUM_FRAMES_IN_FLIGHT);
 
-    auto result = device_.createSemaphore(&create_info, nullptr, &image_available_semaphore_, dispatch_);
+    for (auto& frame_in_flight : frames_in_flight_)
+    {
+        vk::SemaphoreCreateInfo create_info{};
 
-    EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
+        auto result = device_.createSemaphore(&create_info, nullptr, &frame_in_flight.image_available_semaphore, dispatch_);
 
-    result = device_.createSemaphore(&create_info, nullptr, &render_finished_semaphore_, dispatch_);
+        EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
 
-    EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
+        result = device_.createSemaphore(&create_info, nullptr, &frame_in_flight.render_finished_semaphore, dispatch_);
 
-    SPDLOG_INFO("Creating semaphores.");
+        EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
+
+        vk::FenceCreateInfo fence_create_info{};
+
+        fence_create_info.setFlags(vk::FenceCreateFlagBits::eSignaled);
+
+        result = device_.createFence(&fence_create_info, nullptr, &frame_in_flight.fence, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to create fence.");
+    }
+    
+    SPDLOG_INFO("Created frames in flight synchronization objects.");
 }
 
-void engine::destroy_semaphores_()
+void engine::destroy_frames_in_flight_()
 {
-    SPDLOG_TRACE("Destroying semaphores...");
+    SPDLOG_TRACE("Destroying frames in flight synchronization objects...");
 
-    device_.destroySemaphore(image_available_semaphore_, nullptr, dispatch_);
-    device_.destroySemaphore(render_finished_semaphore_, nullptr, dispatch_);
+    for (const auto& frame_in_flight : frames_in_flight_)
+    {
+        device_.destroySemaphore(frame_in_flight.image_available_semaphore, nullptr, dispatch_);
+        device_.destroySemaphore(frame_in_flight.render_finished_semaphore, nullptr, dispatch_);
+        device_.destroyFence(frame_in_flight.fence, nullptr, dispatch_);
+    }
 
-    SPDLOG_TRACE("Destroyed semaphores.");
+    SPDLOG_TRACE("Destroyed frames in flight synchronization objects.");
 }
 
 void engine::record_command_buffer_(std::uint32_t swapchain_image_index)
