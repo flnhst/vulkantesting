@@ -139,7 +139,6 @@ void engine::stop()
 
 void engine::main_loop_()
 {
-    frame_counter_++;
     fps_counter_++;
 
     if ((clock::now() - last_second_) > std::chrono::seconds(1))
@@ -149,7 +148,7 @@ void engine::main_loop_()
         second_counter_++;
 
         sdl_window_->set_title(fmt::format("Vulkan Testing: {} second(s) elapsed, {} FPS.", second_counter_, fps_counter_));
-        SPDLOG_INFO("Frame {}: {} second(s) elapsed, {} FPS.", frame_counter_, second_counter_, fps_counter_);
+        SPDLOG_INFO("Tick {}: {} second(s) elapsed, {} FPS.", ticks_, second_counter_, fps_counter_);
 
         fps_counter_ = 0;
     }

@@ -69,7 +69,7 @@ public:
     static constexpr const char* VERT_SHADER_FILENAME{ "spv/vert.spv" };
     static constexpr const char* FRAG_SHADER_FILENAME{ "spv/frag.spv" };
 
-    static constexpr std::uint64_t MAXIMUM_FRAMES_IN_FLIGHT{ 3 };
+    static constexpr std::uint64_t MAXIMUM_FRAMES_IN_FLIGHT{ 1 };
 
     engine();
     ~engine();
@@ -174,8 +174,7 @@ private:
 
     clock::time_point start_point_{};
     clock::time_point last_second_{};
-
-    std::uint64_t frame_counter_{ 0 };
+    
     std::uint64_t second_counter_{ 0 };
     std::uint64_t fps_counter_{ 0 };
 
