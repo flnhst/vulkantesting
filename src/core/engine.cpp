@@ -147,7 +147,7 @@ void engine::main_loop_()
 
     if (ticks_ == 5)
     {
-        stop();
+        //stop();
     }
 }
 
@@ -190,6 +190,8 @@ void engine::draw_frame_()
     result = present_queue_.presentKHR(present_info, dispatch_);
 
     EVK_ASSERT_RESULT(result, "Failed to present.");
+
+    device_.waitIdle(dispatch_);
 }
 
 void engine::create_sdl_window_()
@@ -894,7 +896,7 @@ void engine::record_command_buffers_()
 {
     SPDLOG_INFO("Recording command buffers...");
 
-    for (int i = 0; i < swapchain_images_.size(); i++)
+    for (std::size_t i = 0; i < swapchain_images_.size(); i++)
     {
         record_command_buffer_(i);
     }

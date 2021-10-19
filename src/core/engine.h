@@ -38,9 +38,6 @@ struct swapchain_image
     vk::CommandPool command_pool{ nullptr };
 
     vk::CommandBuffer command_buffer{ nullptr };
-
-    vk::Semaphore image_available_semaphore_{ nullptr };
-    vk::Semaphore render_finished_semaphore_{ nullptr };
 };
 
 class engine
@@ -158,7 +155,8 @@ private:
 
     vk::Pipeline graphics_pipeline_{ nullptr };
 
-
+    vk::Semaphore image_available_semaphore_{ nullptr };
+    vk::Semaphore render_finished_semaphore_{ nullptr };
 
     friend VkBool32 messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
