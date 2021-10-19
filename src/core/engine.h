@@ -175,6 +175,7 @@ private:
     clock::time_point start_point_{};
     clock::time_point last_second_{};
 
+    std::uint64_t frame_counter_{ 0 };
     std::uint64_t second_counter_{ 0 };
     std::uint64_t fps_counter_{ 0 };
 
