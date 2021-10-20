@@ -63,14 +63,14 @@ public:
 #ifdef WIN32
     static constexpr vk::PresentModeKHR PREFERRED_PRESENT_MODE{ vk::PresentModeKHR::eMailbox };
 #else
-    static constexpr vk::PresentModeKHR PREFERRED_PRESENT_MODE{ vk::PresentModeKHR::eFifo };
+    static constexpr vk::PresentModeKHR PREFERRED_PRESENT_MODE{ vk::PresentModeKHR::eImmediate };
 #endif
     static constexpr std::uint32_t PREFERRED_EXTRA_IMAGE_COUNT{ 1 };
 
     static constexpr const char* VERT_SHADER_FILENAME{ "spv/vert.spv" };
     static constexpr const char* FRAG_SHADER_FILENAME{ "spv/frag.spv" };
 
-    static constexpr std::uint64_t MAXIMUM_FRAMES_IN_FLIGHT{ 1 };
+    static constexpr std::uint64_t MAXIMUM_FRAMES_IN_FLIGHT{ 3 };
 
     engine();
     ~engine();
