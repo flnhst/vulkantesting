@@ -46,6 +46,7 @@ struct frame_in_flight
 {
     vk::Semaphore image_available_semaphore{ nullptr };
     vk::Semaphore render_finished_semaphore{ nullptr };
+    vk::Semaphore render_finished_timeline_semaphore{ nullptr };
 
     vk::Fence fence{ nullptr };
 };
@@ -108,6 +109,7 @@ private:
     void record_command_buffers_();
     void create_frames_in_flight_();
 
+    void reset_timeline_semaphore_(vk::Semaphore& timeline_semaphore, std::uint64_t initial_value);
     void record_command_buffer_(std::uint32_t swapchain_image_index);
 
     void destroy_frames_in_flight_();

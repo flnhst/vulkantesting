@@ -115,6 +115,7 @@ int engine::run()
         main_loop_();
     }
 
+    // NOT IN LOOP ONLY FOR EXIT
     // WAIT IDLE
     // WAIT IDLE
     // WAIT IDLE
@@ -179,7 +180,7 @@ void engine::main_loop_()
 
 void engine::draw_frame_()
 {
-    const auto& frame_in_flight = frames_in_flight_[current_frame_];
+    auto& frame_in_flight = frames_in_flight_[current_frame_];
 
     auto result = device_.waitForFences(1, &frame_in_flight.fence, true, std::numeric_limits<std::uint64_t>::max());
 
@@ -208,7 +209,11 @@ void engine::draw_frame_()
 
     EVK_ASSERT_RESULT(result, "Failed to reset fence.");
 
-    vk::SubmitInfo submit_info{};
+    const vk::Semaphore signal_semaphores[2] = { frame_in_flight.render_finished_semaphore, frame_in_flight.render_finished_timeline_semaphore };
+
+    vk::StructureChain<vk::SubmitInfo, vk::TimelineSemaphoreSubmitInfo> chain{};
+
+    auto& submit_info = chain.get<vk::SubmitInfo>();
 
     submit_info
         .setWaitSemaphoreCount(1)
@@ -216,8 +221,16 @@ void engine::draw_frame_()
         .setPWaitDstStageMask(wait_dst_stage_mask)
         .setCommandBufferCount(1)
         .setPCommandBuffers(&swapchain_image.command_buffer)
-        .setSignalSemaphoreCount(1)
-        .setPSignalSemaphores(&frame_in_flight.render_finished_semaphore);
+        .setSignalSemaphoreCount(2)
+        .setPSignalSemaphores(signal_semaphores);
+
+    const std::uint64_t signal_values[2] = { 0, 1 };
+
+    auto& timeline_submit_info = chain.get<vk::TimelineSemaphoreSubmitInfo>();
+
+    timeline_submit_info
+        .setSignalSemaphoreValueCount(2)
+        .setPSignalSemaphoreValues(signal_values);
 
     result = graphics_queue_.submit(1, &submit_info, frame_in_flight.fence, dispatch_);
 
@@ -235,6 +248,19 @@ void engine::draw_frame_()
     result = present_queue_.presentKHR(present_info, dispatch_);
 
     EVK_ASSERT_RESULT(result, "Failed to present.");
+
+    std::uint64_t wait_value = 1;
+
+    vk::SemaphoreWaitInfo wait_info{};
+
+    wait_info
+        .setSemaphoreCount(1)
+        .setPSemaphores(&frame_in_flight.render_finished_timeline_semaphore)
+        .setPValues(&wait_value);
+
+    result = device_.waitSemaphores(wait_info, std::numeric_limits<std::uint64_t>::max(), dispatch_);
+
+    reset_timeline_semaphore_(frame_in_flight.render_finished_timeline_semaphore, 0);
 
     current_frame_ = (current_frame_ + 1) % MAXIMUM_FRAMES_IN_FLIGHT;
 }
@@ -475,7 +501,12 @@ void engine::create_device_()
 
     const auto physical_device = selected_physical_device_info_->physical_device;
 
-    vk::PhysicalDeviceFeatures features{};
+    vk::StructureChain<vk::DeviceCreateInfo, vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceTimelineSemaphoreFeatures> chain{};
+
+    auto& create_info = chain.get<vk::DeviceCreateInfo>();
+
+    chain.get<vk::PhysicalDeviceTimelineSemaphoreFeatures>()
+        .setTimelineSemaphore(true);
 
     float queue_priority{ 1.0f };
 
@@ -491,13 +522,11 @@ void engine::create_device_()
             .setQueueCount(1)
             .setPQueuePriorities(&queue_priority);
     }
-
-    vk::DeviceCreateInfo create_info{};
-
+    
     create_info
         .setQueueCreateInfoCount(queue_create_infos.size())
         .setPQueueCreateInfos(queue_create_infos.data())
-        .setPEnabledFeatures(&features)
+        .setPEnabledFeatures(nullptr)
         .setEnabledExtensionCount(device_extensions_.size())
         .setPpEnabledExtensionNames(device_extensions_.data())
         .setEnabledLayerCount(layers_.size())
@@ -967,6 +996,16 @@ void engine::create_frames_in_flight_()
 
         EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
 
+        vk::StructureChain<vk::SemaphoreCreateInfo, vk::SemaphoreTypeCreateInfo> chain{};
+
+        chain.get<vk::SemaphoreTypeCreateInfo>()
+            .setSemaphoreType(vk::SemaphoreType::eTimeline)
+            .setInitialValue(0);
+
+        result = device_.createSemaphore(&chain.get<vk::SemaphoreCreateInfo>(), nullptr, &frame_in_flight.render_finished_timeline_semaphore, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to create timeline semaphore.");
+
         vk::FenceCreateInfo fence_create_info{};
 
         fence_create_info.setFlags(vk::FenceCreateFlagBits::eSignaled);
@@ -979,6 +1018,26 @@ void engine::create_frames_in_flight_()
     SPDLOG_INFO("Created frames in flight synchronization objects.");
 }
 
+void engine::reset_timeline_semaphore_(vk::Semaphore& timeline_semaphore, std::uint64_t initial_value)
+{
+    if (timeline_semaphore != static_cast<vk::Semaphore>(nullptr))
+    {
+        device_.destroySemaphore(timeline_semaphore, nullptr, dispatch_);
+
+        timeline_semaphore = nullptr;
+    }
+
+    vk::StructureChain<vk::SemaphoreCreateInfo, vk::SemaphoreTypeCreateInfo> chain{};
+
+    chain.get<vk::SemaphoreTypeCreateInfo>()
+        .setSemaphoreType(vk::SemaphoreType::eTimeline)
+        .setInitialValue(initial_value);
+
+    const auto result = device_.createSemaphore(&chain.get<vk::SemaphoreCreateInfo>(), nullptr, &timeline_semaphore, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to create timeline semaphore.");
+}
+
 void engine::destroy_frames_in_flight_()
 {
     SPDLOG_TRACE("Destroying frames in flight synchronization objects...");
@@ -987,6 +1046,7 @@ void engine::destroy_frames_in_flight_()
     {
         device_.destroySemaphore(frame_in_flight.image_available_semaphore, nullptr, dispatch_);
         device_.destroySemaphore(frame_in_flight.render_finished_semaphore, nullptr, dispatch_);
+        device_.destroySemaphore(frame_in_flight.render_finished_timeline_semaphore, nullptr, dispatch_);
         device_.destroyFence(frame_in_flight.fence, nullptr, dispatch_);
     }
 
