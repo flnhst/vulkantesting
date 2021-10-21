@@ -15,7 +15,7 @@ sdl_window::sdl_window(engine& p_engine)
     x = 1000;
 #endif
 
-    sdl_window_ = &sdl_context_->create_window("Vulkan Testing", x, 200, width_, height_,SDL_WINDOW_ALLOW_HIGHDPI);
+    sdl_window_ = &sdl_context_->create_window("Vulkan Testing", x, 200, width_, height_,SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE);
 }
 
 sdl_window::~sdl_window()
