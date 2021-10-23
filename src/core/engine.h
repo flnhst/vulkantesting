@@ -46,7 +46,6 @@ struct frame_in_flight
 {
     vk::Semaphore image_available_semaphore{ nullptr };
     vk::Semaphore render_finished_semaphore{ nullptr };
-    vk::Semaphore render_finished_timeline_semaphore{ nullptr };
 
     vk::Fence fence{ nullptr };
 };
@@ -128,6 +127,8 @@ private:
 
     bool is_physical_device_suitable_(const physical_device_info& p_physical_device_info);
 
+    void recreate_swapchain_();
+
     std::unique_ptr<sdl_window> sdl_window_;
 
     bool main_loop_running_{ true };
@@ -179,6 +180,8 @@ private:
     
     std::uint64_t second_counter_{ 0 };
     std::uint64_t fps_counter_{ 0 };
+
+    bool out_of_date_{ false };
 
     friend VkBool32 messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,

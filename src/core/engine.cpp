@@ -161,6 +161,11 @@ void engine::main_loop_()
 
     sdl_window_->process_events();
 
+    if (out_of_date_)
+    {
+        recreate_swapchain_();
+    }
+
     draw_frame_();
 
     if (first_tick_)
@@ -171,11 +176,6 @@ void engine::main_loop_()
     }
 
     ticks_++;
-
-    if (ticks_ == 5)
-    {
-        //stop();
-    }
 }
 
 void engine::draw_frame_()
@@ -209,9 +209,9 @@ void engine::draw_frame_()
 
     EVK_ASSERT_RESULT(result, "Failed to reset fence.");
 
-    const vk::Semaphore signal_semaphores[2] = { frame_in_flight.render_finished_semaphore, frame_in_flight.render_finished_timeline_semaphore };
+    const vk::Semaphore signal_semaphores[1] = { frame_in_flight.render_finished_semaphore };
 
-    vk::StructureChain<vk::SubmitInfo, vk::TimelineSemaphoreSubmitInfo> chain{};
+    vk::StructureChain<vk::SubmitInfo> chain{};
 
     auto& submit_info = chain.get<vk::SubmitInfo>();
 
@@ -221,16 +221,8 @@ void engine::draw_frame_()
         .setPWaitDstStageMask(wait_dst_stage_mask)
         .setCommandBufferCount(1)
         .setPCommandBuffers(&swapchain_image.command_buffer)
-        .setSignalSemaphoreCount(2)
+        .setSignalSemaphoreCount(1)
         .setPSignalSemaphores(signal_semaphores);
-
-    const std::uint64_t signal_values[2] = { 0, 1 };
-
-    auto& timeline_submit_info = chain.get<vk::TimelineSemaphoreSubmitInfo>();
-
-    timeline_submit_info
-        .setSignalSemaphoreValueCount(2)
-        .setPSignalSemaphoreValues(signal_values);
 
     result = graphics_queue_.submit(1, &submit_info, frame_in_flight.fence, dispatch_);
 
@@ -245,22 +237,18 @@ void engine::draw_frame_()
         .setPSwapchains(&swapchain_)
         .setPImageIndices(&swapchain_image_index);
 
-    result = present_queue_.presentKHR(present_info, dispatch_);
+    try
+    {
+        result = present_queue_.presentKHR(present_info, dispatch_);
 
-    EVK_ASSERT_RESULT(result, "Failed to present.");
+        EVK_ASSERT_RESULT(result, "Failed to present.");
+    }
+    catch (vk::OutOfDateKHRError&)
+    {
+        SPDLOG_WARN("Surface is out of date.");
 
-    std::uint64_t wait_value = 1;
-
-    vk::SemaphoreWaitInfo wait_info{};
-
-    wait_info
-        .setSemaphoreCount(1)
-        .setPSemaphores(&frame_in_flight.render_finished_timeline_semaphore)
-        .setPValues(&wait_value);
-
-    result = device_.waitSemaphores(wait_info, std::numeric_limits<std::uint64_t>::max(), dispatch_);
-
-    reset_timeline_semaphore_(frame_in_flight.render_finished_timeline_semaphore, 0);
+        out_of_date_ = true;
+    }
 
     current_frame_ = (current_frame_ + 1) % MAXIMUM_FRAMES_IN_FLIGHT;
 }
@@ -619,6 +607,8 @@ void engine::create_swapchain_()
 {
     SPDLOG_INFO("Creating swapchain...");
 
+    vk::SwapchainKHR old_swapchain = swapchain_;
+
     vk::SwapchainCreateInfoKHR create_info{};
 
     create_info
@@ -633,7 +623,8 @@ void engine::create_swapchain_()
         .setPreTransform(swapchain_info_.capabilities.surfaceCapabilities.currentTransform)
         .setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
         .setPresentMode(swapchain_info_.chosen_present_mode)
-        .setClipped(true);
+        .setClipped(true)
+        .setOldSwapchain(old_swapchain);
 
     std::vector<std::uint32_t> queue_families;
 
@@ -996,16 +987,6 @@ void engine::create_frames_in_flight_()
 
         EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
 
-        vk::StructureChain<vk::SemaphoreCreateInfo, vk::SemaphoreTypeCreateInfo> chain{};
-
-        chain.get<vk::SemaphoreTypeCreateInfo>()
-            .setSemaphoreType(vk::SemaphoreType::eTimeline)
-            .setInitialValue(0);
-
-        result = device_.createSemaphore(&chain.get<vk::SemaphoreCreateInfo>(), nullptr, &frame_in_flight.render_finished_timeline_semaphore, dispatch_);
-
-        EVK_ASSERT_RESULT(result, "Failed to create timeline semaphore.");
-
         vk::FenceCreateInfo fence_create_info{};
 
         fence_create_info.setFlags(vk::FenceCreateFlagBits::eSignaled);
@@ -1046,9 +1027,10 @@ void engine::destroy_frames_in_flight_()
     {
         device_.destroySemaphore(frame_in_flight.image_available_semaphore, nullptr, dispatch_);
         device_.destroySemaphore(frame_in_flight.render_finished_semaphore, nullptr, dispatch_);
-        device_.destroySemaphore(frame_in_flight.render_finished_timeline_semaphore, nullptr, dispatch_);
         device_.destroyFence(frame_in_flight.fence, nullptr, dispatch_);
     }
+
+    frames_in_flight_.clear();
 
     SPDLOG_TRACE("Destroyed frames in flight synchronization objects.");
 }
@@ -1154,6 +1136,8 @@ void engine::destroy_swapchain_image_views_()
     {
         device_.destroyImageView(swapchain_image.image_view, nullptr, dispatch_);
     }
+
+    swapchain_images_.clear();
 
     SPDLOG_TRACE("Destroyed swapchain image views.");
 }
@@ -1282,8 +1266,36 @@ VkBool32 messenger_callback(
 
     if (trigger_debug_break)
     {
-        vulkantesting_debug_break();
+        //vulkantesting_debug_break();
     }
 
     return false;
+}
+
+void engine::recreate_swapchain_()
+{
+    device_.waitIdle(dispatch_);
+
+    destroy_frames_in_flight_();
+    free_command_buffers_();
+    destroy_command_pools_();
+    destroy_framebuffers_();
+    destroy_render_pass_();
+    destroy_swapchain_image_views_();
+    //destroy_surface_();
+
+    current_frame_ = 0;
+
+    //create_surface_();
+    query_swapchain_support_();
+    create_swapchain_();
+    retrieve_swapchain_images_();
+    create_render_pass_();
+    create_framebuffers_();
+    create_command_pools_();
+    allocate_command_buffers_();
+    record_command_buffers_();
+    create_frames_in_flight_();
+
+    out_of_date_ = false;
 }
