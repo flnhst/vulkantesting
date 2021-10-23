@@ -36,23 +36,32 @@ struct swapchain_image
 
     vk::Framebuffer framebuffer{ nullptr };
     vk::CommandPool command_pool{ nullptr };
-
-    vk::CommandBuffer command_buffer{ nullptr };
-
-    vk::Fence fence{ nullptr };
 };
 
 struct frame_in_flight
 {
+    vk::CommandBuffer command_buffer{ nullptr };
+
     vk::Semaphore image_available_semaphore{ nullptr };
     vk::Semaphore render_finished_semaphore{ nullptr };
 
     vk::Fence fence{ nullptr };
+
+    vk::CommandPool* command_pool_ptr{ nullptr };
+
+    std::uint32_t swapchain_image_index{ 0 };
+
+    std::unique_ptr<std::binary_semaphore> frame_done;
 };
 
 class engine
 {
 public:
+    constexpr static bool RENDER_THREAD_ENABLED = false;
+
+    constexpr static std::uint64_t WAIT_FOR_FENCES_TIMEOUT_MS = 25; // milliseconds
+    constexpr static std::uint64_t TOTAL_TIME_ABORT_LEVEL_MS = 1000; // milliseconds
+
     static constexpr int VULKAN_MAJOR{ 1 };
     static constexpr int VULKAN_MINOR{ 2 };
     static constexpr int VULKAN_PATCH{ 168 };
@@ -62,14 +71,14 @@ public:
 #ifdef WIN32
     static constexpr vk::PresentModeKHR PREFERRED_PRESENT_MODE{ vk::PresentModeKHR::eMailbox };
 #else
-    static constexpr vk::PresentModeKHR PREFERRED_PRESENT_MODE{ vk::PresentModeKHR::eImmediate };
+    static constexpr vk::PresentModeKHR PREFERRED_PRESENT_MODE{ vk::PresentModeKHR::eFifo };
 #endif
     static constexpr std::uint32_t PREFERRED_EXTRA_IMAGE_COUNT{ 1 };
 
     static constexpr const char* VERT_SHADER_FILENAME{ "spv/vert.spv" };
     static constexpr const char* FRAG_SHADER_FILENAME{ "spv/frag.spv" };
 
-    static constexpr std::uint64_t MAXIMUM_FRAMES_IN_FLIGHT{ 3 };
+    static constexpr std::uint64_t MAXIMUM_FRAMES_IN_FLIGHT{ 2 };
 
     engine();
     ~engine();
@@ -86,6 +95,7 @@ public:
 
 private:
     void main_loop_();
+
     void draw_frame_();
 
     void create_sdl_window_();
@@ -104,15 +114,11 @@ private:
     vk::ShaderModule create_shader_module_(const std::string& name, const std::vector<char>& binary);
     void create_framebuffers_();
     void create_command_pools_();
-    void allocate_command_buffers_();
-    void record_command_buffers_();
-    void create_frames_in_flight_();
 
     void reset_timeline_semaphore_(vk::Semaphore& timeline_semaphore, std::uint64_t initial_value);
-    void record_command_buffer_(std::uint32_t swapchain_image_index);
+    void record_command_buffer_(frame_in_flight& p_frame_in_flight);
 
     void destroy_frames_in_flight_();
-    void free_command_buffers_();
     void destroy_command_pools_();
     void destroy_framebuffers_();
     void destroy_graphics_pipeline_();
@@ -128,6 +134,16 @@ private:
     bool is_physical_device_suitable_(const physical_device_info& p_physical_device_info);
 
     void recreate_swapchain_();
+
+    // render thread only
+
+    void render_entrypoint_();
+
+    void present_(frame_in_flight* our_frame_in_flight);
+
+    // render thread only
+
+    void wait_on_fence(vk::Fence fence, const std::string& name);
 
     std::unique_ptr<sdl_window> sdl_window_;
 
@@ -182,6 +198,13 @@ private:
     std::uint64_t fps_counter_{ 0 };
 
     bool out_of_date_{ false };
+
+    std::thread render_thread_;
+    std::atomic<bool> render_thread_active_{ true };
+
+    frame_in_flight new_frame_in_flight;
+
+    moodycamel::BlockingConcurrentQueue<frame_in_flight*> render_queue_;
 
     friend VkBool32 messenger_callback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,

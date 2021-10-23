@@ -15,7 +15,7 @@ void initialize_logging()
     auto file_sink_ptr = std::make_shared<spdlog::sinks::basic_file_sink_mt>("vulkantesting.log", true);
     default_logger->sinks().emplace_back(std::move(file_sink_ptr));
 
-    spdlog::set_pattern("%T.%f %-7t %-20s %-8l : %^%v%$");
+    spdlog::set_pattern("%T.%f %-20t %-40s %-5# %-8l : %^%v%$");
 }
 
 int inner_main()

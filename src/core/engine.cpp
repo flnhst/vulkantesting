@@ -16,6 +16,19 @@ void engine::initialize()
 {
     SPDLOG_INFO("Initializing...");
 
+    if (RENDER_THREAD_ENABLED)
+    {
+        SPDLOG_INFO("Starting render thread...");
+
+        render_thread_ = std::thread([this]() { this->render_entrypoint_(); });
+
+        SPDLOG_INFO("Started render thread.");
+    }
+    else
+    {
+        SPDLOG_WARN("Render thread not enabled.");
+    }
+
     auto vk_layer_path_env = get_environment_variable("VK_LAYER_PATH");
 
     if (vk_layer_path_env)
@@ -66,9 +79,6 @@ void engine::initialize()
     create_graphics_pipeline_();
     create_framebuffers_();
     create_command_pools_();
-    allocate_command_buffers_();
-    record_command_buffers_();
-    create_frames_in_flight_();
 
     SPDLOG_INFO("Initialized.");
 }
@@ -77,8 +87,22 @@ void engine::destroy()
 {
     SPDLOG_TRACE("Destroying everything...");
 
+    if (RENDER_THREAD_ENABLED)
+    {
+        SPDLOG_TRACE("Stopping render thread...");
+
+        render_thread_active_ = false;
+
+        render_queue_.enqueue(nullptr);
+
+        SPDLOG_TRACE("Joining render thread...");
+
+        render_thread_.join();
+
+        SPDLOG_TRACE("Stopped render thread.");
+    }
+
     destroy_frames_in_flight_();
-    free_command_buffers_();
     destroy_command_pools_();
     destroy_framebuffers_();
     destroy_graphics_pipeline_();
@@ -180,75 +204,104 @@ void engine::main_loop_()
 
 void engine::draw_frame_()
 {
-    auto& frame_in_flight = frames_in_flight_[current_frame_];
-
-    auto result = device_.waitForFences(1, &frame_in_flight.fence, true, std::numeric_limits<std::uint64_t>::max());
-
-    EVK_ASSERT_RESULT(result, "Failed to wait for fence.");
-
-    std::uint32_t swapchain_image_index{ 0 };
-
-    result = device_.acquireNextImageKHR(swapchain_, std::numeric_limits<std::uint64_t>::max(), frame_in_flight.image_available_semaphore, nullptr, &swapchain_image_index, dispatch_);
-
-    EVK_ASSERT_RESULT(result, "Failed to acquire image.");
-
-    auto& swapchain_image = swapchain_images_[swapchain_image_index];
-
-    if (swapchain_image.fence != static_cast<vk::Fence>(nullptr))
     {
-        auto result = device_.waitForFences(1, &swapchain_image.fence, true, std::numeric_limits<std::uint64_t>::max());
+        if (new_frame_in_flight.command_buffer)
+        {
+            //new_frame_in_flight.frame_done->acquire();
 
-        EVK_ASSERT_RESULT(result, "Failed to wait for fence.");
+            //device_.waitIdle();
+
+            device_.freeCommandBuffers(*new_frame_in_flight.command_pool_ptr, new_frame_in_flight.command_buffer, dispatch_);
+
+            device_.destroySemaphore(new_frame_in_flight.image_available_semaphore, nullptr, dispatch_);
+            device_.destroySemaphore(new_frame_in_flight.render_finished_semaphore, nullptr, dispatch_);
+
+            new_frame_in_flight.frame_done.reset();
+        }
     }
 
-    swapchain_image.fence = frame_in_flight.fence;
+    //frame_in_flight new_frame_in_flight;
 
-    const vk::PipelineStageFlags wait_dst_stage_mask[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
-
-    result = device_.resetFences(1, &frame_in_flight.fence, dispatch_);
-
-    EVK_ASSERT_RESULT(result, "Failed to reset fence.");
-
-    const vk::Semaphore signal_semaphores[1] = { frame_in_flight.render_finished_semaphore };
-
-    vk::StructureChain<vk::SubmitInfo> chain{};
-
-    auto& submit_info = chain.get<vk::SubmitInfo>();
-
-    submit_info
-        .setWaitSemaphoreCount(1)
-        .setPWaitSemaphores(&frame_in_flight.image_available_semaphore)
-        .setPWaitDstStageMask(wait_dst_stage_mask)
-        .setCommandBufferCount(1)
-        .setPCommandBuffers(&swapchain_image.command_buffer)
-        .setSignalSemaphoreCount(1)
-        .setPSignalSemaphores(signal_semaphores);
-
-    result = graphics_queue_.submit(1, &submit_info, frame_in_flight.fence, dispatch_);
-
-    EVK_ASSERT_RESULT(result, "Failed to submit command buffer.");
-
-    vk::PresentInfoKHR present_info{};
-
-    present_info
-        .setWaitSemaphoreCount(1)
-        .setPWaitSemaphores(&frame_in_flight.render_finished_semaphore)
-        .setSwapchainCount(1)
-        .setPSwapchains(&swapchain_)
-        .setPImageIndices(&swapchain_image_index);
-
-    try
     {
-        result = present_queue_.presentKHR(present_info, dispatch_);
+        vk::SemaphoreCreateInfo create_info{};
 
-        EVK_ASSERT_RESULT(result, "Failed to present.");
+        auto result =
+            device_.createSemaphore(&create_info, nullptr, &new_frame_in_flight.image_available_semaphore, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
+
+        result = device_.createSemaphore(&create_info, nullptr, &new_frame_in_flight.render_finished_semaphore, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
+
+        if (new_frame_in_flight.fence == static_cast<vk::Fence>(nullptr))
+        {
+            vk::FenceCreateInfo fence_create_info{};
+
+            result = device_.createFence(&fence_create_info, nullptr, &new_frame_in_flight.fence, dispatch_);
+
+            EVK_ASSERT_RESULT(result, "Failed to create fence.");
+        }
+        else
+        {
+            result = device_.resetFences(1, &new_frame_in_flight.fence, dispatch_);
+
+            EVK_ASSERT_RESULT(result, "Failed to reset fence.");
+        }
+
+        new_frame_in_flight.frame_done = std::make_unique<std::binary_semaphore>(0);
+
+        auto& swapchain_image = swapchain_images_[new_frame_in_flight.swapchain_image_index];
+
+        new_frame_in_flight.command_pool_ptr = &swapchain_image.command_pool;
+
+        vk::CommandBufferAllocateInfo allocate_info{};
+
+        allocate_info
+            .setCommandBufferCount(1)
+            .setCommandPool(*new_frame_in_flight.command_pool_ptr)
+            .setLevel(vk::CommandBufferLevel::ePrimary);
+
+        result = device_.allocateCommandBuffers(&allocate_info, &new_frame_in_flight.command_buffer, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to allocate command buffer.");
     }
-    catch (vk::OutOfDateKHRError&)
+
     {
-        SPDLOG_WARN("Surface is out of date.");
+        auto result = device_.acquireNextImageKHR(swapchain_, std::numeric_limits<std::uint64_t>::max(),
+                                                  new_frame_in_flight.image_available_semaphore, nullptr, &new_frame_in_flight.swapchain_image_index,
+                                             dispatch_);
 
-        out_of_date_ = true;
+        EVK_ASSERT_RESULT(result, "Failed to acquire image.");
+
+        record_command_buffer_(new_frame_in_flight);
+
+        const vk::PipelineStageFlags wait_dst_stage_mask[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
+
+        const vk::Semaphore signal_semaphores[1] = { new_frame_in_flight.render_finished_semaphore };
+
+        vk::StructureChain<vk::SubmitInfo> chain{};
+
+        auto& submit_info = chain.get<vk::SubmitInfo>();
+
+        submit_info.setWaitSemaphoreCount(1)
+            .setPWaitSemaphores(&new_frame_in_flight.image_available_semaphore)
+            .setPWaitDstStageMask(wait_dst_stage_mask)
+            .setCommandBufferCount(1)
+            .setPCommandBuffers(&new_frame_in_flight.command_buffer)
+            .setSignalSemaphoreCount(1)
+            .setPSignalSemaphores(signal_semaphores);
+
+        result = graphics_queue_.submit(1, &submit_info, new_frame_in_flight.fence, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to submit command buffer.");
     }
+
+    //render_queue_.enqueue(&new_frame_in_flight);
+
+    present_(&new_frame_in_flight);
+
+    wait_on_fence(new_frame_in_flight.fence, "command buffers");
 
     current_frame_ = (current_frame_ + 1) % MAXIMUM_FRAMES_IN_FLIGHT;
 }
@@ -936,69 +989,6 @@ void engine::create_command_pools_()
     SPDLOG_INFO("Created command pools.");
 }
 
-void engine::allocate_command_buffers_()
-{
-    SPDLOG_INFO("Allocating command buffers...");
-
-    for (auto& swapchain_image : swapchain_images_)
-    {
-        vk::CommandBufferAllocateInfo allocate_info{};
-
-        allocate_info
-            .setCommandBufferCount(1)
-            .setCommandPool(swapchain_image.command_pool)
-            .setLevel(vk::CommandBufferLevel::ePrimary);
-
-        const auto result = device_.allocateCommandBuffers(&allocate_info, &swapchain_image.command_buffer, dispatch_);
-
-        EVK_ASSERT_RESULT(result, "Failed to allocate command buffer.");
-    }
-
-    SPDLOG_INFO("Allocated command buffers.");
-}
-
-void engine::record_command_buffers_()
-{
-    SPDLOG_INFO("Recording command buffers...");
-
-    for (std::size_t i = 0; i < swapchain_images_.size(); i++)
-    {
-        record_command_buffer_(i);
-    }
-
-    SPDLOG_INFO("Recorded command buffers.");
-}
-
-void engine::create_frames_in_flight_()
-{
-    SPDLOG_INFO("Creating frames in flight synchronization objects...");
-
-    frames_in_flight_.resize(MAXIMUM_FRAMES_IN_FLIGHT);
-
-    for (auto& frame_in_flight : frames_in_flight_)
-    {
-        vk::SemaphoreCreateInfo create_info{};
-
-        auto result = device_.createSemaphore(&create_info, nullptr, &frame_in_flight.image_available_semaphore, dispatch_);
-
-        EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
-
-        result = device_.createSemaphore(&create_info, nullptr, &frame_in_flight.render_finished_semaphore, dispatch_);
-
-        EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
-
-        vk::FenceCreateInfo fence_create_info{};
-
-        fence_create_info.setFlags(vk::FenceCreateFlagBits::eSignaled);
-
-        result = device_.createFence(&fence_create_info, nullptr, &frame_in_flight.fence, dispatch_);
-
-        EVK_ASSERT_RESULT(result, "Failed to create fence.");
-    }
-    
-    SPDLOG_INFO("Created frames in flight synchronization objects.");
-}
-
 void engine::reset_timeline_semaphore_(vk::Semaphore& timeline_semaphore, std::uint64_t initial_value)
 {
     if (timeline_semaphore != static_cast<vk::Semaphore>(nullptr))
@@ -1035,11 +1025,11 @@ void engine::destroy_frames_in_flight_()
     SPDLOG_TRACE("Destroyed frames in flight synchronization objects.");
 }
 
-void engine::record_command_buffer_(std::uint32_t swapchain_image_index)
+void engine::record_command_buffer_(frame_in_flight& p_frame_in_flight)
 {
-    const auto& swapchain_image = swapchain_images_[swapchain_image_index];
+    const auto& swapchain_image = swapchain_images_[p_frame_in_flight.swapchain_image_index];
 
-    const auto& cmd_buffer = swapchain_image.command_buffer;
+    const auto& cmd_buffer = p_frame_in_flight.command_buffer;
 
     vk::CommandBufferBeginInfo begin_info{};
 
@@ -1070,18 +1060,6 @@ void engine::record_command_buffer_(std::uint32_t swapchain_image_index)
     cmd_buffer.endRenderPass(dispatch_);
 
     cmd_buffer.end(dispatch_);
-}
-
-void engine::free_command_buffers_()
-{
-    SPDLOG_TRACE("Freeing command buffers...");
-
-    for (const auto& swapchain_image : swapchain_images_)
-    {
-        device_.freeCommandBuffers(swapchain_image.command_pool, 1, &swapchain_image.command_buffer, dispatch_);
-    }
-
-    SPDLOG_TRACE("Freed command buffers.");
 }
 
 void engine::destroy_command_pools_()
@@ -1277,25 +1255,107 @@ void engine::recreate_swapchain_()
     device_.waitIdle(dispatch_);
 
     destroy_frames_in_flight_();
-    free_command_buffers_();
     destroy_command_pools_();
     destroy_framebuffers_();
     destroy_render_pass_();
     destroy_swapchain_image_views_();
-    //destroy_surface_();
 
     current_frame_ = 0;
 
-    //create_surface_();
     query_swapchain_support_();
     create_swapchain_();
     retrieve_swapchain_images_();
     create_render_pass_();
     create_framebuffers_();
     create_command_pools_();
-    allocate_command_buffers_();
-    record_command_buffers_();
-    create_frames_in_flight_();
 
     out_of_date_ = false;
+}
+
+void engine::render_entrypoint_()
+{
+    SPDLOG_INFO("Render thread reporting in. LETS DO THIS.");
+
+    while (render_thread_active_)
+    {
+        frame_in_flight* our_frame_in_flight = nullptr;
+
+        render_queue_.wait_dequeue(our_frame_in_flight);
+
+        if (our_frame_in_flight == nullptr)
+        {
+            SPDLOG_INFO("Received nullptr frame_in_flight, stopping render thread.");
+
+            return;
+        }
+
+        present_(our_frame_in_flight);
+
+        our_frame_in_flight->frame_done->release();
+    }
+
+    SPDLOG_INFO("Render thread done.");
+}
+
+void engine::present_(frame_in_flight* our_frame_in_flight)
+{
+    vk::PresentInfoKHR present_info{};
+
+    present_info
+        .setWaitSemaphoreCount(1)
+        .setPWaitSemaphores(&our_frame_in_flight->render_finished_semaphore)
+        .setSwapchainCount(1)
+        .setPSwapchains(&swapchain_)
+        .setPImageIndices(&our_frame_in_flight->swapchain_image_index);
+
+    try
+    {
+        const auto result = present_queue_.presentKHR(present_info, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to present.");
+    }
+    catch (vk::OutOfDateKHRError&)
+    {
+        SPDLOG_WARN("Surface is out of date.");
+
+        out_of_date_ = true;
+    }
+}
+
+void engine::wait_on_fence(vk::Fence fence, const std::string& name)
+{
+    vk::Result result;
+
+    std::uint64_t total_time_waited_{ 0 };
+
+    std::uint64_t fence_handle = reinterpret_cast<std::uint64_t>(fence.operator VkFence_T *());
+
+    do
+    {
+        result = device_.waitForFences(1, &fence, true, WAIT_FOR_FENCES_TIMEOUT_MS * 1000000);
+
+        if (result == vk::Result::eSuccess)
+        {
+            return;
+        }
+
+        total_time_waited_ += WAIT_FOR_FENCES_TIMEOUT_MS;
+
+        if ((total_time_waited_ % 50) == 0)
+        {
+            SPDLOG_WARN("Waited on fence '{}' ({:x}) for '{}' millisecond(s) now.", name, fence_handle, total_time_waited_);
+        }
+
+        if (total_time_waited_ >= TOTAL_TIME_ABORT_LEVEL_MS)
+        {
+            SPDLOG_CRITICAL("Stopped waiting on fence '{}' ({:x}) after waiting '{}' millisecond(s), this might indicate something very wrong.", name, fence_handle, total_time_waited_);
+
+            std::abort();
+        }
+    }
+    while (result == vk::Result::eTimeout);
+
+    SPDLOG_CRITICAL("In waiting for fence '{}' ({:x}), the result code returned was '{}'.", name, fence_handle, vk::to_string(result));
+
+    std::abort();
 }

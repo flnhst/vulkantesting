@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.17 FATAL_ERROR)
 
 project(vulkantesting)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 if(NOT WIN32)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -283,6 +283,11 @@ set(CORE_SOURCES
     ${CORE_SOURCE_DIR}/engine.h
     ${CORE_SOURCE_DIR}/sdl_window.cpp
     ${CORE_SOURCE_DIR}/sdl_window.h
+    ${CORE_SOURCE_DIR}/atomic_queue.h
+    ${CORE_SOURCE_DIR}/blockingconcurrentqueue.h
+    ${CORE_SOURCE_DIR}/concurrentqueue.h
+    ${CORE_SOURCE_DIR}/defs.h
+    ${CORE_SOURCE_DIR}/lightweightsemaphore.h
     Project.bgp)
 
 source_group(core FILES ${CORE_SOURCE_DIR})
@@ -313,13 +318,11 @@ set(LOG_SOURCES
     ${LOG_SOURCE_DIR}/sinks/stdout_color_sinks.cpp
     ${LOG_SOURCE_DIR}/sinks/stdout_sinks.cpp
     ${LOG_SOURCE_DIR}/sinks/wincolor_sink.cpp
-    ${LOG_SOURCE_DIR}/spdlog/async.h
-    ${LOG_SOURCE_DIR}/spdlog/async_logger.h
+    ${LOG_SOURCE_DIR}/spdlog.cpp
     ${LOG_SOURCE_DIR}/spdlog/cfg/argv.h
     ${LOG_SOURCE_DIR}/spdlog/cfg/env.h
     ${LOG_SOURCE_DIR}/spdlog/cfg/helpers.h
     ${LOG_SOURCE_DIR}/spdlog/cfg/log_levels.h
-    ${LOG_SOURCE_DIR}/spdlog/common.h
     ${LOG_SOURCE_DIR}/spdlog/details/circular_q.h
     ${LOG_SOURCE_DIR}/spdlog/details/console_globals.h
     ${LOG_SOURCE_DIR}/spdlog/details/file_helper.h
@@ -336,7 +339,6 @@ set(LOG_SOURCES
     ${LOG_SOURCE_DIR}/spdlog/details/tcp_client.h
     ${LOG_SOURCE_DIR}/spdlog/details/thread_pool.h
     ${LOG_SOURCE_DIR}/spdlog/details/windows_include.h
-    ${LOG_SOURCE_DIR}/spdlog/fmt/bin_to_hex.h
     ${LOG_SOURCE_DIR}/spdlog/fmt/bundled/chrono.h
     ${LOG_SOURCE_DIR}/spdlog/fmt/bundled/color.h
     ${LOG_SOURCE_DIR}/spdlog/fmt/bundled/compile.h
@@ -348,12 +350,9 @@ set(LOG_SOURCES
     ${LOG_SOURCE_DIR}/spdlog/fmt/bundled/posix.h
     ${LOG_SOURCE_DIR}/spdlog/fmt/bundled/printf.h
     ${LOG_SOURCE_DIR}/spdlog/fmt/bundled/ranges.h
+    ${LOG_SOURCE_DIR}/spdlog/fmt/bin_to_hex.h
     ${LOG_SOURCE_DIR}/spdlog/fmt/fmt.h
     ${LOG_SOURCE_DIR}/spdlog/fmt/ostr.h
-    ${LOG_SOURCE_DIR}/spdlog/formatter.h
-    ${LOG_SOURCE_DIR}/spdlog/fwd.h
-    ${LOG_SOURCE_DIR}/spdlog/logger.h
-    ${LOG_SOURCE_DIR}/spdlog/pattern_formatter.h
     ${LOG_SOURCE_DIR}/spdlog/sinks/android_sink.h
     ${LOG_SOURCE_DIR}/spdlog/sinks/ansicolor_sink.h
     ${LOG_SOURCE_DIR}/spdlog/sinks/base_sink.h
@@ -372,14 +371,20 @@ set(LOG_SOURCES
     ${LOG_SOURCE_DIR}/spdlog/sinks/syslog_sink.h
     ${LOG_SOURCE_DIR}/spdlog/sinks/systemd_sink.h
     ${LOG_SOURCE_DIR}/spdlog/sinks/tcp_sink.h
-    ${LOG_SOURCE_DIR}/spdlog/sinks/wincolor_sink.h
     ${LOG_SOURCE_DIR}/spdlog/sinks/win_eventlog_sink.h
+    ${LOG_SOURCE_DIR}/spdlog/sinks/wincolor_sink.h
+    ${LOG_SOURCE_DIR}/spdlog/async.h
+    ${LOG_SOURCE_DIR}/spdlog/async_logger.h
+    ${LOG_SOURCE_DIR}/spdlog/common.h
+    ${LOG_SOURCE_DIR}/spdlog/formatter.h
+    ${LOG_SOURCE_DIR}/spdlog/fwd.h
+    ${LOG_SOURCE_DIR}/spdlog/logger.h
+    ${LOG_SOURCE_DIR}/spdlog/pattern_formatter.h
     ${LOG_SOURCE_DIR}/spdlog/spdlog-inl.h
     ${LOG_SOURCE_DIR}/spdlog/spdlog.h
     ${LOG_SOURCE_DIR}/spdlog/stopwatch.h
     ${LOG_SOURCE_DIR}/spdlog/tweakme.h
     ${LOG_SOURCE_DIR}/spdlog/version.h
-    ${LOG_SOURCE_DIR}/spdlog.cpp
     Project.bgp)
 
 source_group(log FILES ${LOG_SOURCE_DIR})

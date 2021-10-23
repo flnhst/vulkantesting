@@ -12,8 +12,12 @@
 #include <set>
 #include <optional>
 #include <fstream>
+#include <semaphore>
 
 #include "log/log.h"
+
+#include "concurrentqueue.h"
+#include "blockingconcurrentqueue.h"
 
 #include <libsdlplusplus/context.h>
 #include <libsdlplusplus/window.h>

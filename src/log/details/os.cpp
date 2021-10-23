@@ -39,6 +39,7 @@
 
 #ifdef __linux__
 #include <sys/syscall.h> //Use gettid() syscall under linux to get thread id
+#include <pthread.h>
 
 #elif defined(_AIX)
 #include <pthread.h> // for pthread_getthreadid_np
@@ -320,7 +321,7 @@ size_t _thread_id() noexcept
 #if defined(__ANDROID__) && defined(__ANDROID_API__) && (__ANDROID_API__ < 21)
 #define SYS_gettid __NR_gettid
 #endif
-    return static_cast<size_t>(::syscall(SYS_gettid));
+    return static_cast<size_t>(pthread_self());
 #elif defined(_AIX) || defined(__DragonFly__) || defined(__FreeBSD__)
     return static_cast<size_t>(::pthread_getthreadid_np());
 #elif defined(__NetBSD__)

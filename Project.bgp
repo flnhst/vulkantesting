@@ -54,6 +54,10 @@ var vulkantestingExecutable = Project.CreateExecutable(
     extensions: new [] { ".cpp", ".h" }
 );
 
+// Language
+
+Project.CppStandard = CppStandard.Cpp20;
+
 // Definitions
 
 Project.AddDefinitionToTargets("SDL_MAIN_HANDLED");
