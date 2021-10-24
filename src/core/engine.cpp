@@ -560,8 +560,10 @@ void engine::select_physical_device_()
 
             SPDLOG_INFO("Selected queue family index {} for graphics.", graphics_queue_family_index_);
             SPDLOG_INFO("Selected queue family index {} for presentation.", present_queue_family_index_);
-
-            return;
+        }
+        else
+        {
+            SPDLOG_WARN("The device '{}' was not considered suitable.", physical_device_info.properties.properties.deviceName.data());
         }
     }
 
@@ -1209,8 +1211,7 @@ void engine::destroy_sdl_window_()
 
 bool engine::is_physical_device_suitable_(const physical_device_info& p_physical_device_info)
 {
-    return (p_physical_device_info.properties.properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu ||
-           p_physical_device_info.properties.properties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu)
+    return (p_physical_device_info.properties.properties.deviceType == PREFERRED_PHYSICAL_DEVICE_TYPE)
         && !p_physical_device_info.graphics_family_queue_indices_.empty()
         && !p_physical_device_info.transfer_family_queue_indices_.empty()
         && !p_physical_device_info.present_family_queue_indices_.empty();
@@ -1343,7 +1344,14 @@ void engine::present_(frame_in_flight* our_frame_in_flight)
     {
         const auto result = present_queue_.presentKHR(present_info, dispatch_);
 
-        EVK_ASSERT_RESULT(result, "Failed to present.");
+        if (result == vk::Result::eSuboptimalKHR)
+        {
+            out_of_date_ = true;
+        }
+        else
+        {
+            EVK_ASSERT_RESULT(result, "Failed to present.");
+        }
     }
     catch (vk::OutOfDateKHRError&)
     {

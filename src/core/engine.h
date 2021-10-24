@@ -67,6 +67,8 @@ public:
     static constexpr int VULKAN_MINOR{ 2 };
     static constexpr int VULKAN_PATCH{ 168 };
 
+    static constexpr vk::PhysicalDeviceType PREFERRED_PHYSICAL_DEVICE_TYPE{ vk::PhysicalDeviceType::eIntegratedGpu };
+
     static constexpr vk::Format PREFERRED_FORMAT{ vk::Format::eB8G8R8A8Srgb };
     static constexpr vk::ColorSpaceKHR PREFERRED_COLOR_SPACE{ vk::ColorSpaceKHR::eSrgbNonlinear };
 #ifdef WIN32
