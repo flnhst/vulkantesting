@@ -1202,7 +1202,8 @@ void engine::destroy_sdl_window_()
 
 bool engine::is_physical_device_suitable_(const physical_device_info& p_physical_device_info)
 {
-    return p_physical_device_info.properties.properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu
+    return (p_physical_device_info.properties.properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu ||
+           p_physical_device_info.properties.properties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu)
         && !p_physical_device_info.graphics_family_queue_indices_.empty()
         && !p_physical_device_info.transfer_family_queue_indices_.empty()
         && !p_physical_device_info.present_family_queue_indices_.empty();
