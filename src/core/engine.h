@@ -57,7 +57,7 @@ struct frame_in_flight
 class engine
 {
 public:
-    constexpr static bool USE_DEBUG_LAYERS = false;
+    constexpr static bool USE_DEBUG_LAYERS = true;
     constexpr static bool RENDER_THREAD_ENABLED = false;
 
     constexpr static std::uint64_t WAIT_FOR_FENCES_TIMEOUT_MS = 25; // milliseconds
