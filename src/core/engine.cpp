@@ -1366,7 +1366,7 @@ void engine::wait_on_fence(vk::Fence fence, const std::string& name)
 
         if ((total_time_waited_ % 50) == 0)
         {
-            SPDLOG_WARN("Waited on fence '{}' ({:x}) for '{}' millisecond(s) now.", name.c_str(), fence_handle, total_time_waited_);qu
+            SPDLOG_WARN("Waited on fence '{}' ({:x}) for '{}' millisecond(s) now.", name.c_str(), fence_handle, total_time_waited_);
         }
 
         if (total_time_waited_ >= TOTAL_TIME_ABORT_LEVEL_MS)
