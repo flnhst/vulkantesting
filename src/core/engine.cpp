@@ -295,6 +295,13 @@ void engine::draw_frame_()
                                                   new_frame_in_flight.image_available_semaphore, nullptr, &new_frame_in_flight.swapchain_image_index,
                                              dispatch_);
 
+        if (result == vk::Result::eSuboptimalKHR)
+        {
+            out_of_date_ = true;
+
+            return;
+        }
+
         EVK_ASSERT_RESULT(result, "Failed to acquire image.");
 
         record_command_buffer_(new_frame_in_flight);
