@@ -27,7 +27,7 @@ private:
     sdl::context_pointer_type sdl_context_;
     sdl::window* sdl_window_{ nullptr };
 
-    std::uint32_t width_{ 512 };
+    std::uint32_t width_{ 1024 };
     std::uint32_t height_{ 512 };
 };
 

@@ -51,7 +51,7 @@ struct frame_in_flight
 
     std::uint32_t swapchain_image_index{ 0 };
 
-    std::unique_ptr<std::binary_semaphore> frame_done;
+    //std::unique_ptr<std::binary_semaphore> frame_done;
 };
 
 class engine
@@ -67,7 +67,7 @@ public:
     static constexpr int VULKAN_MINOR{ 2 };
     static constexpr int VULKAN_PATCH{ 168 };
 
-    static constexpr vk::PhysicalDeviceType PREFERRED_PHYSICAL_DEVICE_TYPE{ vk::PhysicalDeviceType::eDiscreteGpu- };
+    vk::PhysicalDeviceType preferred_physical_device_type_{vk::PhysicalDeviceType::eDiscreteGpu };
 
     static constexpr vk::Format PREFERRED_FORMAT{ vk::Format::eB8G8R8A8Srgb };
     static constexpr vk::ColorSpaceKHR PREFERRED_COLOR_SPACE{ vk::ColorSpaceKHR::eSrgbNonlinear };

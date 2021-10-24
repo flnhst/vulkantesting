@@ -16,6 +16,24 @@ void engine::initialize()
 {
     SPDLOG_INFO("Initializing...");
 
+    const auto vkt_gpu_type = get_environment_variable("VKT_GPU_TYPE");
+
+    if (vkt_gpu_type)
+    {
+        if (vkt_gpu_type.value() == "discrete")
+        {
+            preferred_physical_device_type_ = vk::PhysicalDeviceType::eDiscreteGpu;
+        }
+        else if (vkt_gpu_type.value() == "integrated")
+        {
+            preferred_physical_device_type_ = vk::PhysicalDeviceType::eIntegratedGpu;
+        }
+        else
+        {
+            throw std::runtime_error(fmt::format("Unknown GPU type specified: '{}'.", vkt_gpu_type.value()));
+        }
+    }
+
     if (RENDER_THREAD_ENABLED)
     {
         SPDLOG_INFO("Starting render thread...");
@@ -177,7 +195,7 @@ void engine::main_loop_()
 
         second_counter_++;
 
-        sdl_window_->set_title(fmt::format("Vulkan Testing: {} second(s) elapsed, {} FPS.", second_counter_, fps_counter_));
+        sdl_window_->set_title(fmt::format("Vulkan Testing ({}): {} second(s) elapsed, {} FPS.", selected_physical_device_info_->properties.properties.deviceName, second_counter_, fps_counter_));
         SPDLOG_INFO("Tick {}: {} second(s) elapsed, {} FPS.", ticks_, second_counter_, fps_counter_);
 
         fps_counter_ = 0;
@@ -230,7 +248,7 @@ void engine::create_frame_in_flight_(frame_in_flight& p_frame_in_flight)
         EVK_ASSERT_RESULT(result, "Failed to reset fence.");
     }
 
-    p_frame_in_flight.frame_done = std::make_unique<std::binary_semaphore>(0);
+    //p_frame_in_flight.frame_done = std::make_unique<std::binary_semaphore>(0);
 
     auto& swapchain_image = swapchain_images_[p_frame_in_flight.swapchain_image_index];
 
@@ -258,7 +276,9 @@ void engine::destroy_frame_in_flight_(frame_in_flight& p_frame_in_flight, bool f
     p_frame_in_flight.render_finished_semaphore = nullptr;
     p_frame_in_flight.command_pool_ptr = nullptr;
     p_frame_in_flight.swapchain_image_index = 0;
-    p_frame_in_flight.frame_done.reset();
+    //p_frame_in_flight.frame_done.reset();
+
+    p_frame_in_flight = frame_in_flight{};
 
     if (final_destroy)
     {
@@ -1211,7 +1231,7 @@ void engine::destroy_sdl_window_()
 
 bool engine::is_physical_device_suitable_(const physical_device_info& p_physical_device_info)
 {
-    return (p_physical_device_info.properties.properties.deviceType == PREFERRED_PHYSICAL_DEVICE_TYPE)
+    return (p_physical_device_info.properties.properties.deviceType == preferred_physical_device_type_)
         && !p_physical_device_info.graphics_family_queue_indices_.empty()
         && !p_physical_device_info.transfer_family_queue_indices_.empty()
         && !p_physical_device_info.present_family_queue_indices_.empty();
@@ -1323,7 +1343,7 @@ void engine::render_entrypoint_()
 
         present_(our_frame_in_flight);
 
-        our_frame_in_flight->frame_done->release();
+        //our_frame_in_flight->frame_done->release();
     }
 
     SPDLOG_INFO("Render thread done.");
