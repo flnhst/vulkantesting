@@ -57,6 +57,7 @@ struct frame_in_flight
 class engine
 {
 public:
+    constexpr static bool USE_DEBUG_LAYERS = false;
     constexpr static bool RENDER_THREAD_ENABLED = false;
 
     constexpr static std::uint64_t WAIT_FOR_FENCES_TIMEOUT_MS = 25; // milliseconds
@@ -137,13 +138,13 @@ private:
 
     void recreate_swapchain_();
 
-    // render thread only
+    // render thread only begin
 
     void render_entrypoint_();
 
     void present_(frame_in_flight* our_frame_in_flight);
 
-    // render thread only
+    // render thread only end
 
     void wait_on_fence(vk::Fence fence, const std::string& name);
 
@@ -181,7 +182,7 @@ private:
     vk::SwapchainKHR swapchain_{ nullptr };
 
     std::vector<swapchain_image> swapchain_images_;
-    std::vector<frame_in_flight> frames_in_flight_;
+    //std::vector<frame_in_flight> frames_in_flight_;
 
     vk::RenderPass render_pass_{ nullptr };
 
@@ -189,7 +190,7 @@ private:
 
     vk::Pipeline graphics_pipeline_{ nullptr };
 
-    std::uint64_t current_frame_{ 0 };
+    //std::uint64_t current_frame_{ 0 };
 
     using clock = std::chrono::system_clock;
 

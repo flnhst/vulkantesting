@@ -36,7 +36,7 @@ void engine::initialize()
         SPDLOG_INFO("VK_LAYER_PATH = '{}'.", vk_layer_path_env.value().c_str());
     }
 
-    if (!has_environment_variable("VKT_DISABLE_VALIDATION"))
+    if (!has_environment_variable("VKT_DISABLE_VALIDATION") || !USE_DEBUG_LAYERS)
     {
         layers_.emplace_back("VK_LAYER_KHRONOS_validation");
     }
@@ -51,15 +51,20 @@ void engine::initialize()
     }
 
     instance_extensions_.emplace_back(VK_KHR_SURFACE_EXTENSION_NAME);
-    instance_extensions_.emplace_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-    instance_extensions_.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
+    if (!has_environment_variable("VKT_DISABLE_VALIDATION") || !USE_DEBUG_LAYERS)
+    {
+        instance_extensions_.emplace_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+        instance_extensions_.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+
     instance_extensions_.emplace_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
 
 #ifdef WIN32
     instance_extensions_.emplace_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
 #else
     instance_extensions_.emplace_back(VK_KHR_XLIB_SURFACE_EXTENSION_NAME);
-    instance_extensions_.emplace_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
+    //instance_extensions_.emplace_back(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME);
 #endif
 
     device_extensions_.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
@@ -257,7 +262,11 @@ void engine::destroy_frame_in_flight_(frame_in_flight& p_frame_in_flight, bool f
 
     if (final_destroy)
     {
+        SPDLOG_WARN("Destroying the fence...");
+
         device_.destroyFence(p_frame_in_flight.fence);
+
+        SPDLOG_WARN("Destroyed fence.");
     }
 }
 
@@ -317,7 +326,7 @@ void engine::draw_frame_()
 
     wait_on_fence(new_frame_in_flight.fence, "command buffers");
 
-    current_frame_ = (current_frame_ + 1) % MAXIMUM_FRAMES_IN_FLIGHT;
+    //current_frame_ = (current_frame_ + 1) % MAXIMUM_FRAMES_IN_FLIGHT;
 }
 
 void engine::create_sdl_window_()
@@ -362,6 +371,11 @@ void engine::create_instance_()
 
 void engine::create_debug_utils_ext_()
 {
+    if (!USE_DEBUG_LAYERS)
+    {
+        return;
+    }
+
     SPDLOG_INFO("Creating debug utils messenger callback...");
 
     vk::DebugUtilsMessengerCreateInfoEXT create_info{};
@@ -1147,6 +1161,13 @@ void engine::destroy_surface_()
 
 void engine::destroy_debug_utils_ext_()
 {
+    if (!USE_DEBUG_LAYERS)
+    {
+        SPDLOG_ERROR("DEBUG LAYERS ARE DISABLED!!!!!!!!");
+
+        return;
+    }
+
     if (messages_emitted_ == 0)
     {
         SPDLOG_DEBUG("No messages were emitted during the lifetime of the debug messenger callback.");
@@ -1250,6 +1271,8 @@ VkBool32 messenger_callback(
 
 void engine::recreate_swapchain_()
 {
+    SPDLOG_WARN("Recreating swapchain...");
+
     device_.waitIdle(dispatch_);
 
     destroy_frame_in_flight_(new_frame_in_flight);
@@ -1258,7 +1281,7 @@ void engine::recreate_swapchain_()
     destroy_render_pass_();
     destroy_swapchain_image_views_();
 
-    current_frame_ = 0;
+    //current_frame_ = 0;
 
     query_swapchain_support_();
     create_swapchain_();
@@ -1268,6 +1291,8 @@ void engine::recreate_swapchain_()
     create_command_pools_();
 
     out_of_date_ = false;
+
+    SPDLOG_WARN("Recreated swapchain.");
 }
 
 void engine::render_entrypoint_()
@@ -1341,7 +1366,7 @@ void engine::wait_on_fence(vk::Fence fence, const std::string& name)
 
         if ((total_time_waited_ % 50) == 0)
         {
-            SPDLOG_WARN("Waited on fence '{}' ({:x}) for '{}' millisecond(s) now.", name.c_str(), fence_handle, total_time_waited_);
+            SPDLOG_WARN("Waited on fence '{}' ({:x}) for '{}' millisecond(s) now.", name.c_str(), fence_handle, total_time_waited_);qu
         }
 
         if (total_time_waited_ >= TOTAL_TIME_ABORT_LEVEL_MS)
