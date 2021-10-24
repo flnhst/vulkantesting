@@ -81,7 +81,7 @@ class sdl_window;
 
 inline void throw_exception(std::string message)
 {
-    SPDLOG_CRITICAL("Exception thrown: '{}'.", message);
+    SPDLOG_CRITICAL("Exception thrown: '{}'.", message.c_str());
 
     throw std::runtime_error(message);
 }

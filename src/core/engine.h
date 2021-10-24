@@ -96,6 +96,9 @@ public:
 private:
     void main_loop_();
 
+    void create_frame_in_flight_(frame_in_flight& p_frame_in_flight);
+    void destroy_frame_in_flight_(frame_in_flight& p_frame_in_flight, bool final_destroy = false);
+
     void draw_frame_();
 
     void create_sdl_window_();
@@ -117,8 +120,7 @@ private:
 
     void reset_timeline_semaphore_(vk::Semaphore& timeline_semaphore, std::uint64_t initial_value);
     void record_command_buffer_(frame_in_flight& p_frame_in_flight);
-
-    void destroy_frames_in_flight_();
+    
     void destroy_command_pools_();
     void destroy_framebuffers_();
     void destroy_graphics_pipeline_();

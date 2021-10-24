@@ -33,7 +33,7 @@ void engine::initialize()
 
     if (vk_layer_path_env)
     {
-        SPDLOG_INFO("VK_LAYER_PATH = '{}'.", vk_layer_path_env.value());
+        SPDLOG_INFO("VK_LAYER_PATH = '{}'.", vk_layer_path_env.value().c_str());
     }
 
     if (!has_environment_variable("VKT_DISABLE_VALIDATION"))
@@ -102,7 +102,7 @@ void engine::destroy()
         SPDLOG_TRACE("Stopped render thread.");
     }
 
-    destroy_frames_in_flight_();
+    destroy_frame_in_flight_(new_frame_in_flight, true);
     destroy_command_pools_();
     destroy_framebuffers_();
     destroy_graphics_pipeline_();
@@ -185,11 +185,6 @@ void engine::main_loop_()
 
     sdl_window_->process_events();
 
-    if (out_of_date_)
-    {
-        recreate_swapchain_();
-    }
-
     draw_frame_();
 
     if (first_tick_)
@@ -202,70 +197,89 @@ void engine::main_loop_()
     ticks_++;
 }
 
+void engine::create_frame_in_flight_(frame_in_flight& p_frame_in_flight)
+{
+    vk::SemaphoreCreateInfo create_info{};
+
+    auto result =
+        device_.createSemaphore(&create_info, nullptr, &p_frame_in_flight.image_available_semaphore, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
+
+    result = device_.createSemaphore(&create_info, nullptr, &p_frame_in_flight.render_finished_semaphore, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
+
+    if (p_frame_in_flight.fence == static_cast<vk::Fence>(nullptr))
+    {
+        vk::FenceCreateInfo fence_create_info{};
+
+        result = device_.createFence(&fence_create_info, nullptr, &p_frame_in_flight.fence, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to create fence.");
+    }
+    else
+    {
+        result = device_.resetFences(1, &p_frame_in_flight.fence, dispatch_);
+
+        EVK_ASSERT_RESULT(result, "Failed to reset fence.");
+    }
+
+    p_frame_in_flight.frame_done = std::make_unique<std::binary_semaphore>(0);
+
+    auto& swapchain_image = swapchain_images_[p_frame_in_flight.swapchain_image_index];
+
+    p_frame_in_flight.command_pool_ptr = &swapchain_image.command_pool;
+
+    vk::CommandBufferAllocateInfo allocate_info{};
+
+    allocate_info.setCommandBufferCount(1)
+        .setCommandPool(*p_frame_in_flight.command_pool_ptr)
+        .setLevel(vk::CommandBufferLevel::ePrimary);
+
+    result = device_.allocateCommandBuffers(&allocate_info, &p_frame_in_flight.command_buffer, dispatch_);
+
+    EVK_ASSERT_RESULT(result, "Failed to allocate command buffer.");
+}
+
+void engine::destroy_frame_in_flight_(frame_in_flight& p_frame_in_flight, bool final_destroy)
+{
+    device_.freeCommandBuffers(*p_frame_in_flight.command_pool_ptr, p_frame_in_flight.command_buffer, dispatch_);
+    device_.destroySemaphore(p_frame_in_flight.image_available_semaphore, nullptr, dispatch_);
+    device_.destroySemaphore(p_frame_in_flight.render_finished_semaphore, nullptr, dispatch_);
+
+    p_frame_in_flight.command_buffer = nullptr;
+    p_frame_in_flight.image_available_semaphore = nullptr;
+    p_frame_in_flight.render_finished_semaphore = nullptr;
+    p_frame_in_flight.command_pool_ptr = nullptr;
+    p_frame_in_flight.swapchain_image_index = 0;
+    p_frame_in_flight.frame_done.reset();
+
+    if (final_destroy)
+    {
+        device_.destroyFence(p_frame_in_flight.fence);
+    }
+}
+
 void engine::draw_frame_()
 {
+    if (out_of_date_)
     {
-        if (new_frame_in_flight.command_buffer)
-        {
-            //new_frame_in_flight.frame_done->acquire();
+        recreate_swapchain_();
+    }
 
-            //device_.waitIdle();
+    if (new_frame_in_flight.command_buffer)
+    {
+        //new_frame_in_flight.frame_done->acquire();
 
-            device_.freeCommandBuffers(*new_frame_in_flight.command_pool_ptr, new_frame_in_flight.command_buffer, dispatch_);
+        //device_.waitIdle();
 
-            device_.destroySemaphore(new_frame_in_flight.image_available_semaphore, nullptr, dispatch_);
-            device_.destroySemaphore(new_frame_in_flight.render_finished_semaphore, nullptr, dispatch_);
-
-            new_frame_in_flight.frame_done.reset();
-        }
+        destroy_frame_in_flight_(new_frame_in_flight);
     }
 
     //frame_in_flight new_frame_in_flight;
 
-    {
-        vk::SemaphoreCreateInfo create_info{};
-
-        auto result =
-            device_.createSemaphore(&create_info, nullptr, &new_frame_in_flight.image_available_semaphore, dispatch_);
-
-        EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
-
-        result = device_.createSemaphore(&create_info, nullptr, &new_frame_in_flight.render_finished_semaphore, dispatch_);
-
-        EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
-
-        if (new_frame_in_flight.fence == static_cast<vk::Fence>(nullptr))
-        {
-            vk::FenceCreateInfo fence_create_info{};
-
-            result = device_.createFence(&fence_create_info, nullptr, &new_frame_in_flight.fence, dispatch_);
-
-            EVK_ASSERT_RESULT(result, "Failed to create fence.");
-        }
-        else
-        {
-            result = device_.resetFences(1, &new_frame_in_flight.fence, dispatch_);
-
-            EVK_ASSERT_RESULT(result, "Failed to reset fence.");
-        }
-
-        new_frame_in_flight.frame_done = std::make_unique<std::binary_semaphore>(0);
-
-        auto& swapchain_image = swapchain_images_[new_frame_in_flight.swapchain_image_index];
-
-        new_frame_in_flight.command_pool_ptr = &swapchain_image.command_pool;
-
-        vk::CommandBufferAllocateInfo allocate_info{};
-
-        allocate_info
-            .setCommandBufferCount(1)
-            .setCommandPool(*new_frame_in_flight.command_pool_ptr)
-            .setLevel(vk::CommandBufferLevel::ePrimary);
-
-        result = device_.allocateCommandBuffers(&allocate_info, &new_frame_in_flight.command_buffer, dispatch_);
-
-        EVK_ASSERT_RESULT(result, "Failed to allocate command buffer.");
-    }
+    create_frame_in_flight_(new_frame_in_flight);
 
     {
         auto result = device_.acquireNextImageKHR(swapchain_, std::numeric_limits<std::uint64_t>::max(),
@@ -443,13 +457,13 @@ void engine::enumerate_physical_devices_()
         new_info.features = physical_device.getFeatures2(dispatch_);
         new_info.queue_families = physical_device.getQueueFamilyProperties2(dispatch_);
 
-        SPDLOG_INFO("Found physical device: '{}'.", new_info.properties.properties.deviceName);
+        SPDLOG_INFO("Found physical device: '{}'.", new_info.properties.properties.deviceName.data());
 
         const auto present_modes = physical_device.getSurfacePresentModesKHR(surface_, dispatch_);
 
         for (auto present_mode : present_modes)
         {
-            SPDLOG_INFO("Physical device and surface supports present mode '{}'.", vk::to_string(present_mode));
+            SPDLOG_INFO("Physical device and surface supports present mode '{}'.", vk::to_string(present_mode).c_str());
         }
 
         std::uint32_t queue_family_index{ 0 };
@@ -480,7 +494,7 @@ void engine::enumerate_physical_devices_()
 
             if (result != vk::Result::eSuccess)
             {
-                SPDLOG_WARN("Querying surface support has failed: '{}'.", vk::to_string(result));
+                SPDLOG_WARN("Querying surface support has failed: '{}'.", vk::to_string(result).c_str());
             }
             else if (present_support)
             {
@@ -518,7 +532,7 @@ void engine::select_physical_device_()
         {
             selected_physical_device_info_ = &physical_device_info;
 
-            SPDLOG_INFO("Selected device '{}'.", selected_physical_device_info_->properties.properties.deviceName);
+            SPDLOG_INFO("Selected device '{}'.", selected_physical_device_info_->properties.properties.deviceName.data());
 
             graphics_queue_family_index_ = selected_physical_device_info_->graphics_family_queue_indices_[0];
             present_queue_family_index_ = selected_physical_device_info_->present_family_queue_indices_[0];
@@ -617,7 +631,7 @@ void engine::query_swapchain_support_()
         throw_exception(fmt::format("Could not find format '{}' and color space '{}'.", vk::to_string(PREFERRED_FORMAT), vk::to_string(PREFERRED_COLOR_SPACE)));
     }
 
-    SPDLOG_INFO("Format '{}' and color space '{}' chosen.", vk::to_string(swapchain_info_.chosen_surface_format.surfaceFormat.format), vk::to_string(swapchain_info_.chosen_surface_format.surfaceFormat.colorSpace));
+    SPDLOG_INFO("Format '{}' and color space '{}' chosen.", vk::to_string(swapchain_info_.chosen_surface_format.surfaceFormat.format).c_str(), vk::to_string(swapchain_info_.chosen_surface_format.surfaceFormat.colorSpace).c_str());
 
     bool preferred_present_mode_found{ false };
 
@@ -638,7 +652,7 @@ void engine::query_swapchain_support_()
         throw_exception(fmt::format("Could not find present mode '{}'.", vk::to_string(PREFERRED_PRESENT_MODE)));
     }
 
-    SPDLOG_INFO("Present mode '{}' chosen.", vk::to_string(swapchain_info_.chosen_present_mode));
+    SPDLOG_INFO("Present mode '{}' chosen.", vk::to_string(swapchain_info_.chosen_present_mode).c_str());
 
     swapchain_info_.chosen_extent = swapchain_info_.capabilities.surfaceCapabilities.currentExtent;
 
@@ -926,7 +940,7 @@ void engine::create_graphics_pipeline_()
 
 vk::ShaderModule engine::create_shader_module_(const std::string& name, const std::vector<char>& binary)
 {
-    SPDLOG_INFO("Creating shader module for '{}'...", name);
+    SPDLOG_INFO("Creating shader module for '{}'...", name.c_str());
 
     vk::ShaderModuleCreateInfo create_info{};
 
@@ -940,7 +954,7 @@ vk::ShaderModule engine::create_shader_module_(const std::string& name, const st
 
     EVK_ASSERT_RESULT(result, fmt::format("Failed to create shader module for '{}'.", name));
 
-    SPDLOG_INFO("Created shader module for '{}'.", name);
+    SPDLOG_INFO("Created shader module for '{}'.", name.c_str());
 
     return shader_module;
 }
@@ -1007,22 +1021,6 @@ void engine::reset_timeline_semaphore_(vk::Semaphore& timeline_semaphore, std::u
     const auto result = device_.createSemaphore(&chain.get<vk::SemaphoreCreateInfo>(), nullptr, &timeline_semaphore, dispatch_);
 
     EVK_ASSERT_RESULT(result, "Failed to create timeline semaphore.");
-}
-
-void engine::destroy_frames_in_flight_()
-{
-    SPDLOG_TRACE("Destroying frames in flight synchronization objects...");
-
-    for (const auto& frame_in_flight : frames_in_flight_)
-    {
-        device_.destroySemaphore(frame_in_flight.image_available_semaphore, nullptr, dispatch_);
-        device_.destroySemaphore(frame_in_flight.render_finished_semaphore, nullptr, dispatch_);
-        device_.destroyFence(frame_in_flight.fence, nullptr, dispatch_);
-    }
-
-    frames_in_flight_.clear();
-
-    SPDLOG_TRACE("Destroyed frames in flight synchronization objects.");
 }
 
 void engine::record_command_buffer_(frame_in_flight& p_frame_in_flight)
@@ -1234,11 +1232,11 @@ VkBool32 messenger_callback(
 
         if (object_name_info.pObjectName == nullptr)
         {
-            SPDLOG_DEBUG("\tPrevious message is associated with a '{}' object (no name): {:x}", vk::to_string(object_type), object_name_info.objectHandle);
+            SPDLOG_DEBUG("\tPrevious message is associated with a '{}' object (no name): {:x}", vk::to_string(object_type).c_str(), object_name_info.objectHandle);
         }
         else
         {
-            SPDLOG_DEBUG("\tPrevious message is associated with a '{}' object: {:x}", vk::to_string(object_type), object_name_info.pObjectName);
+            SPDLOG_DEBUG("\tPrevious message is associated with a '{}' object: {:x}", vk::to_string(object_type).c_str(), object_name_info.pObjectName);
         }
     }
 
@@ -1254,7 +1252,7 @@ void engine::recreate_swapchain_()
 {
     device_.waitIdle(dispatch_);
 
-    destroy_frames_in_flight_();
+    destroy_frame_in_flight_(new_frame_in_flight);
     destroy_command_pools_();
     destroy_framebuffers_();
     destroy_render_pass_();
@@ -1343,19 +1341,19 @@ void engine::wait_on_fence(vk::Fence fence, const std::string& name)
 
         if ((total_time_waited_ % 50) == 0)
         {
-            SPDLOG_WARN("Waited on fence '{}' ({:x}) for '{}' millisecond(s) now.", name, fence_handle, total_time_waited_);
+            SPDLOG_WARN("Waited on fence '{}' ({:x}) for '{}' millisecond(s) now.", name.c_str(), fence_handle, total_time_waited_);
         }
 
         if (total_time_waited_ >= TOTAL_TIME_ABORT_LEVEL_MS)
         {
-            SPDLOG_CRITICAL("Stopped waiting on fence '{}' ({:x}) after waiting '{}' millisecond(s), this might indicate something very wrong.", name, fence_handle, total_time_waited_);
+            SPDLOG_CRITICAL("Stopped waiting on fence '{}' ({:x}) after waiting '{}' millisecond(s), this might indicate something very wrong.", name.c_str(), fence_handle, total_time_waited_);
 
             std::abort();
         }
     }
     while (result == vk::Result::eTimeout);
 
-    SPDLOG_CRITICAL("In waiting for fence '{}' ({:x}), the result code returned was '{}'.", name, fence_handle, vk::to_string(result));
+    SPDLOG_CRITICAL("In waiting for fence '{}' ({:x}), the result code returned was '{}'.", name.c_str(), fence_handle, vk::to_string(result).c_str());
 
     std::abort();
 }
