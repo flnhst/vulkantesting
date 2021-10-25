@@ -233,20 +233,11 @@ void engine::create_frame_in_flight_(frame_in_flight& p_frame_in_flight)
 
     EVK_ASSERT_RESULT(result, "Failed to create semaphore.");
 
-    if (p_frame_in_flight.fence == static_cast<vk::Fence>(nullptr))
-    {
-        vk::FenceCreateInfo fence_create_info{};
+    vk::FenceCreateInfo fence_create_info{};
 
-        result = device_.createFence(&fence_create_info, nullptr, &p_frame_in_flight.fence, dispatch_);
+    result = device_.createFence(&fence_create_info, nullptr, &p_frame_in_flight.fence, dispatch_);
 
-        EVK_ASSERT_RESULT(result, "Failed to create fence.");
-    }
-    else
-    {
-        result = device_.resetFences(1, &p_frame_in_flight.fence, dispatch_);
-
-        EVK_ASSERT_RESULT(result, "Failed to reset fence.");
-    }
+    EVK_ASSERT_RESULT(result, "Failed to create fence.");
 
     //p_frame_in_flight.frame_done = std::make_unique<std::binary_semaphore>(0);
 
@@ -270,6 +261,7 @@ void engine::destroy_frame_in_flight_(frame_in_flight& p_frame_in_flight, bool f
     device_.freeCommandBuffers(*p_frame_in_flight.command_pool_ptr, p_frame_in_flight.command_buffer, dispatch_);
     device_.destroySemaphore(p_frame_in_flight.image_available_semaphore, nullptr, dispatch_);
     device_.destroySemaphore(p_frame_in_flight.render_finished_semaphore, nullptr, dispatch_);
+    device_.destroyFence(p_frame_in_flight.fence);
 
     p_frame_in_flight.command_buffer = nullptr;
     p_frame_in_flight.image_available_semaphore = nullptr;
@@ -279,15 +271,6 @@ void engine::destroy_frame_in_flight_(frame_in_flight& p_frame_in_flight, bool f
     //p_frame_in_flight.frame_done.reset();
 
     p_frame_in_flight = frame_in_flight{};
-
-    if (final_destroy)
-    {
-        SPDLOG_WARN("Destroying the fence...");
-
-        device_.destroyFence(p_frame_in_flight.fence);
-
-        SPDLOG_WARN("Destroyed fence.");
-    }
 }
 
 void engine::draw_frame_()
